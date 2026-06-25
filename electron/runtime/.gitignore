@@ -1,0 +1,5 @@
+*
+!.gitignore
+!backend/
+!backend/**
+backend/node_modules/
