@@ -103,6 +103,7 @@ export default function UploadsPage() {
   const [kpiPreview, setKpiPreview] = useState(null);
   const [previewing, setPreviewing] = useState(false);
   const [previewMessage, setPreviewMessage] = useState("");
+  const [kpiColumnMapping, setKpiColumnMapping] = useState({});
   
   // Fetch upload history on component mount
   useEffect(() => {
@@ -138,6 +139,38 @@ export default function UploadsPage() {
   const clearKpiPreview = () => {
     setKpiPreview(null);
     setPreviewMessage("");
+    setKpiColumnMapping({});
+  };
+
+  const mappingFields = [
+    { key: "cell", label: "Cell" },
+    { key: "site", label: "Site" },
+    { key: "technology", label: "Technology" },
+    { key: "band", label: "Band" },
+    { key: "sector", label: "Sector" },
+    { key: "sectorName", label: "Sector Name" },
+    { key: "group", label: "Group/Region" },
+    { key: "date", label: "Date" },
+  ];
+
+  const buildDefaultColumnMapping = (preview) => {
+    const detected = preview?.detectedColumns || {};
+    return {
+      cell: detected.cell || "",
+      site: detected.site || "",
+      technology: detected.technology || "",
+      band: detected.band || "",
+      sector: detected.sector || "",
+      sectorName: detected.sectorName || "",
+      group: detected.group || detected.groups || "",
+      date: detected.date || "",
+    };
+  };
+
+  const getCleanColumnMapping = () => {
+    return Object.fromEntries(
+      Object.entries(kpiColumnMapping).filter(([, value]) => value && String(value).trim()),
+    );
   };
 
   const getColorClasses = (color) => {
@@ -355,7 +388,9 @@ export default function UploadsPage() {
     try {
       const result = await previewKpisFile(selectedFile);
       if (result?.success) {
-        setKpiPreview(result.data || null);
+        const previewData = result.data || null;
+        setKpiPreview(previewData);
+        setKpiColumnMapping(buildDefaultColumnMapping(previewData));
         setPreviewMessage(result.message || "KPI preview is ready.");
       } else {
         setPreviewMessage(result?.message || "KPI preview failed.");
@@ -398,6 +433,7 @@ export default function UploadsPage() {
             {
               appendOption: kpiAppendOption,
               fileId: kpiTargetFileId || undefined,
+              columnMapping: getCleanColumnMapping(),
             },
             (percent) => setUploadProgress(percent),
           );
@@ -808,6 +844,44 @@ export default function UploadsPage() {
                               <span className="text-xs text-slate-500">No numeric metric columns detected</span>
                             )}
                           </div>
+                        </div>
+                      </div>
+
+                      <div className="rounded-xl border border-emerald-100 bg-emerald-50/60 p-3">
+                        <div className="flex flex-col gap-1">
+                          <p className="text-xs font-semibold text-emerald-900">
+                            Column mapping
+                          </p>
+                          <p className="text-xs text-emerald-700">
+                            Map your file columns to standard KPI fields before upload.
+                          </p>
+                        </div>
+                        <div className="mt-3 grid gap-3 md:grid-cols-2">
+                          {mappingFields.map((field) => (
+                            <div key={field.key}>
+                              <label className="mb-1 block text-xs font-medium text-slate-700">
+                                {field.label}
+                              </label>
+                              <select
+                                value={kpiColumnMapping[field.key] || ""}
+                                onChange={(e) =>
+                                  setKpiColumnMapping((current) => ({
+                                    ...current,
+                                    [field.key]: e.target.value,
+                                  }))
+                                }
+                                disabled={uploading}
+                                className="w-full rounded-lg border border-emerald-100 bg-white px-3 py-2 text-xs text-slate-700 outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
+                              >
+                                <option value="">Do not map</option>
+                                {(kpiPreview.headers || []).map((header) => (
+                                  <option key={`${field.key}-${header}`} value={header}>
+                                    {header}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          ))}
                         </div>
                       </div>
 

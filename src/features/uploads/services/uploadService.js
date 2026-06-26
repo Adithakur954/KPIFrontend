@@ -24,6 +24,10 @@ function createUploadFormData(file, uploadedBy, remarks, options = {}) {
     formData.append("appendOption", options.appendOption);
   }
 
+  if (options.columnMapping && Object.keys(options.columnMapping).length > 0) {
+    formData.append("columnMapping", JSON.stringify(options.columnMapping));
+  }
+
   const targetFileId = options.fileId || options.targetFileId;
   if (targetFileId) {
     formData.append("fileId", targetFileId);
