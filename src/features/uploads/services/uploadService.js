@@ -2,6 +2,7 @@ import { apiFetch, API_BASE_URL } from "../../../services/apiClient";
 
 const ENDPOINTS = {
   KPI_UPLOAD: import.meta.env.VITE_UPLOAD_KPI_ENDPOINT || "upload/kpi",
+  KPI_PREVIEW: import.meta.env.VITE_UPLOAD_KPI_PREVIEW_ENDPOINT || "upload/kpi/preview",
   SITE_UPLOAD: import.meta.env.VITE_UPLOAD_SITE_ENDPOINT || "upload/site",
   HISTORY: import.meta.env.VITE_UPLOAD_HISTORY_ENDPOINT || "upload/uploads/history",
   DELETE_UPLOAD: import.meta.env.VITE_UPLOAD_DELETE_ENDPOINT || "upload/uploads",
@@ -33,6 +34,28 @@ function createUploadFormData(file, uploadedBy, remarks, options = {}) {
 
 export async function uploadKpisFile(file, uploadedBy, remarks, options) {
   return uploadKpisFileWithProgress(file, uploadedBy, remarks, options);
+}
+
+export async function previewKpisFile(file) {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  try {
+    return await apiFetch(ENDPOINTS.KPI_PREVIEW, {
+      method: "POST",
+      body: formData,
+    });
+  } catch (error) {
+    console.error("[uploadService] previewKpisFile failed", {
+      fileName: file?.name,
+      message: error?.message,
+    });
+    return {
+      success: false,
+      message: error.message || "KPI preview failed",
+      data: null,
+    };
+  }
 }
 
 export async function uploadKpisFileWithProgress(

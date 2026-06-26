@@ -21,9 +21,10 @@ import {
   FileText,
   Loader2 as LoaderIcon,
   AlertTriangle,
-  Bell
+  Bell,
+  Search
 } from "lucide-react";
-import { uploadSitesFile, uploadKpisFileWithProgress, fetchUploads, deleteUploadById } from "./services/uploadService";
+import { uploadSitesFile, uploadKpisFileWithProgress, previewKpisFile, fetchUploads, deleteUploadById } from "./services/uploadService";
 import { uploadAlarmFile } from "../alarms/alarmsService";
 import { useAuth } from "../../context/AutContext";
 
@@ -99,6 +100,9 @@ export default function UploadsPage() {
   const [kpiAppendOption, setKpiAppendOption] = useState("append");
   const [kpiTargetFileId, setKpiTargetFileId] = useState("");
   const [kpiRemarks, setKpiRemarks] = useState("KPI Data upload");
+  const [kpiPreview, setKpiPreview] = useState(null);
+  const [previewing, setPreviewing] = useState(false);
+  const [previewMessage, setPreviewMessage] = useState("");
   
   // Fetch upload history on component mount
   useEffect(() => {
@@ -130,6 +134,11 @@ export default function UploadsPage() {
   };
   const kpiUploadTargets = uploadHistory.filter(isKpiUploadEntry);
   const requiresKpiTarget = kpiAppendOption === "merge" || kpiAppendOption === "overwrite";
+
+  const clearKpiPreview = () => {
+    setKpiPreview(null);
+    setPreviewMessage("");
+  };
 
   const getColorClasses = (color) => {
     const colors = {
@@ -325,11 +334,36 @@ export default function UploadsPage() {
     setSelectedFile(file);
     setUploadStatus(null);
     setUploadMessage("");
+    clearKpiPreview();
   };
 
   const handleFileInputChange = (e) => {
     if (e.target.files && e.target.files[0]) {
       handleFileChange(e.target.files[0]);
+    }
+  };
+
+  const handlePreviewKpi = async () => {
+    if (!selectedFile || selectedType.id !== "kpi") return;
+
+    setPreviewing(true);
+    setPreviewMessage("");
+    setKpiPreview(null);
+    setUploadStatus(null);
+    setUploadMessage("");
+
+    try {
+      const result = await previewKpisFile(selectedFile);
+      if (result?.success) {
+        setKpiPreview(result.data || null);
+        setPreviewMessage(result.message || "KPI preview is ready.");
+      } else {
+        setPreviewMessage(result?.message || "KPI preview failed.");
+      }
+    } catch (error) {
+      setPreviewMessage(error?.message || "KPI preview failed.");
+    } finally {
+      setPreviewing(false);
     }
   };
 
@@ -383,6 +417,7 @@ export default function UploadsPage() {
         // Clear after success
         setTimeout(() => {
           setSelectedFile(null);
+          clearKpiPreview();
           setUploadStatus(null);
           setUploadMessage("");
           if (kpiAppendOption !== "append") {
@@ -409,6 +444,7 @@ export default function UploadsPage() {
     setSelectedFile(null);
     setUploadStatus(null);
     setUploadMessage("");
+    clearKpiPreview();
   };
 
   const handleDeleteUpload = async (uploadId, fileName) => {
@@ -505,7 +541,14 @@ export default function UploadsPage() {
                 return (
                   <button
                     key={type.id}
-                    onClick={() => type.enabled && setSelectedType(type)}
+                    onClick={() => {
+                      if (!type.enabled) return;
+                      setSelectedType(type);
+                      setSelectedFile(null);
+                      clearKpiPreview();
+                      setUploadStatus(null);
+                      setUploadMessage("");
+                    }}
                     disabled={!type.enabled}
                     className={`relative flex flex-col items-center gap-2 p-4 rounded-xl transition-all duration-300 ${
                       isActive
@@ -638,6 +681,163 @@ export default function UploadsPage() {
                 </div>
               )}
 
+              {selectedFile && selectedType.id === "kpi" && (
+                <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-800">
+                        KPI file preview
+                      </p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        Check rows, sheets, detected columns, and metrics before final upload.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handlePreviewKpi}
+                      disabled={previewing || uploading}
+                      className="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {previewing ? (
+                        <LoaderIcon className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Search className="h-4 w-4" />
+                      )}
+                      {previewing ? "Previewing..." : "Preview file"}
+                    </button>
+                  </div>
+
+                  {previewMessage && !kpiPreview && (
+                    <div className="mt-4 rounded-xl border border-amber-100 bg-amber-50 p-3 text-xs text-amber-800">
+                      {previewMessage}
+                    </div>
+                  )}
+
+                  {kpiPreview && (
+                    <div className="mt-4 space-y-4">
+                      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                        <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                            Rows
+                          </p>
+                          <p className="mt-1 text-lg font-bold text-slate-900">
+                            {(kpiPreview.totalRows || 0).toLocaleString()}
+                          </p>
+                        </div>
+                        <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                            Sheets
+                          </p>
+                          <p className="mt-1 text-lg font-bold text-slate-900">
+                            {kpiPreview.sheetCount || 0}
+                          </p>
+                        </div>
+                        <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                            Columns
+                          </p>
+                          <p className="mt-1 text-lg font-bold text-slate-900">
+                            {kpiPreview.headers?.length || 0}
+                          </p>
+                        </div>
+                        <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                            Metrics
+                          </p>
+                          <p className="mt-1 text-lg font-bold text-slate-900">
+                            {kpiPreview.detectedMetricColumns?.length || 0}
+                          </p>
+                        </div>
+                      </div>
+
+                      {Array.isArray(kpiPreview.validation?.warnings) &&
+                        kpiPreview.validation.warnings.length > 0 && (
+                          <div className="rounded-xl border border-amber-100 bg-amber-50 p-3">
+                            <div className="flex items-start gap-2">
+                              <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600" />
+                              <div>
+                                <p className="text-xs font-semibold text-amber-900">
+                                  Preview warnings
+                                </p>
+                                <ul className="mt-2 space-y-1 text-xs text-amber-800">
+                                  {kpiPreview.validation.warnings.map((warning, index) => (
+                                    <li key={`${warning}-${index}`}>{warning}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
+                          <p className="text-xs font-semibold text-slate-700">
+                            Detected telecom columns
+                          </p>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {Object.entries(kpiPreview.detectedColumns || {}).length > 0 ? (
+                              Object.entries(kpiPreview.detectedColumns || {}).map(([key, value]) => (
+                                <span
+                                  key={key}
+                                  className="rounded-lg border border-emerald-100 bg-white px-2.5 py-1 text-xs text-emerald-700"
+                                >
+                                  {key}: {value}
+                                </span>
+                              ))
+                            ) : (
+                              <span className="text-xs text-slate-500">No telecom columns detected</span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
+                          <p className="text-xs font-semibold text-slate-700">
+                            Detected KPI metrics
+                          </p>
+                          <div className="mt-2 flex max-h-24 flex-wrap gap-2 overflow-y-auto">
+                            {(kpiPreview.detectedMetricColumns || []).length > 0 ? (
+                              kpiPreview.detectedMetricColumns.slice(0, 24).map((metric) => (
+                                <span
+                                  key={metric}
+                                  className="rounded-lg border border-blue-100 bg-white px-2.5 py-1 text-xs text-blue-700"
+                                >
+                                  {metric}
+                                </span>
+                              ))
+                            ) : (
+                              <span className="text-xs text-slate-500">No numeric metric columns detected</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {Array.isArray(kpiPreview.sheets) && kpiPreview.sheets.length > 0 && (
+                        <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
+                          <p className="text-xs font-semibold text-slate-700">
+                            Sheet summary
+                          </p>
+                          <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                            {kpiPreview.sheets.map((sheet) => (
+                              <div
+                                key={sheet.sheetName}
+                                className="rounded-lg border border-slate-100 bg-white px-3 py-2"
+                              >
+                                <p className="truncate text-xs font-semibold text-slate-800">
+                                  {sheet.sheetName}
+                                </p>
+                                <p className="mt-1 text-xs text-slate-500">
+                                  {(sheet.rowCount || 0).toLocaleString()} rows, {sheet.headers?.length || 0} columns
+                                </p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {selectedType.id === "kpi" && (
                 <div className="mt-6 grid gap-4 md:grid-cols-2">
                   <div className="md:col-span-2 rounded-2xl border border-emerald-100 bg-emerald-50/70 p-4">
@@ -716,9 +916,9 @@ export default function UploadsPage() {
               {selectedFile && !uploadStatus && (
                 <button
                   onClick={handleUpload}
-                  disabled={uploading || !selectedType.enabled}
+                  disabled={uploading || previewing || !selectedType.enabled}
                   className={`relative overflow-hidden w-full mt-6 py-4 rounded-xl font-semibold text-sm transition-all duration-200 flex items-center justify-center gap-2 ${
-                    uploading || !selectedType.enabled
+                    uploading || previewing || !selectedType.enabled
                       ? "bg-slate-200 text-slate-400 cursor-not-allowed"
                       : `bg-gradient-to-r ${colorClasses.gradient} text-white shadow-lg ${colorClasses.shadow} hover:shadow-xl active:scale-[0.99]`
                   }`}
