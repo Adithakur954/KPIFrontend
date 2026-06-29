@@ -15,6 +15,7 @@ import {
   Loader2,
   ChevronLeft,
   ChevronRight,
+  SlidersHorizontal,
 } from "lucide-react";
 import { useState } from "react";
 import toolLogo from "../../assets/images/toolLogo.svg";
@@ -36,6 +37,7 @@ export default function Sidebar({
     { to: "/recommendation", label: "RCA Recommendation", icon: Lightbulb },
     { to: "/uploads", label: "Uploads", icon: Upload },
     { to: "/alarms", label: "Alarms", icon: Bell },
+    { to: "/threshold-rules", label: "Threshold Rules", icon: SlidersHorizontal },
     { to: "/sites", label: "Sites", icon: Radio },
   ];
 

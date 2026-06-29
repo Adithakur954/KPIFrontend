@@ -93,6 +93,7 @@ export default function UploadsPage() {
   const [uploading, setUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState(null);
   const [uploadMessage, setUploadMessage] = useState("");
+  const [uploadThresholdSummary, setUploadThresholdSummary] = useState(null);
   const [uploadHistory, setUploadHistory] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [deletingUploadId, setDeletingUploadId] = useState(null);
@@ -140,6 +141,14 @@ export default function UploadsPage() {
     setKpiPreview(null);
     setPreviewMessage("");
     setKpiColumnMapping({});
+  };
+
+  const severityBadgeClasses = {
+    CRITICAL: "bg-red-100 text-red-700 border-red-200",
+    MAJOR: "bg-orange-100 text-orange-700 border-orange-200",
+    MINOR: "bg-amber-100 text-amber-700 border-amber-200",
+    WARNING: "bg-yellow-100 text-yellow-700 border-yellow-200",
+    NORMAL: "bg-emerald-100 text-emerald-700 border-emerald-200",
   };
 
   const mappingFields = [
@@ -367,6 +376,7 @@ export default function UploadsPage() {
     setSelectedFile(file);
     setUploadStatus(null);
     setUploadMessage("");
+    setUploadThresholdSummary(null);
     clearKpiPreview();
   };
 
@@ -408,6 +418,7 @@ export default function UploadsPage() {
     setUploading(true);
     setUploadProgress(0);
     setUploadStatus(null);
+    setUploadThresholdSummary(null);
 
     try {
       let result;
@@ -446,6 +457,7 @@ export default function UploadsPage() {
         setUploadProgress(100);
         setUploadStatus("success");
         setUploadMessage(result.message || "Upload processed successfully.");
+        setUploadThresholdSummary(result?.data?.thresholdSummary || null);
         
         // Reload upload history after successful upload
         await loadUploadHistory();
@@ -456,6 +468,7 @@ export default function UploadsPage() {
           clearKpiPreview();
           setUploadStatus(null);
           setUploadMessage("");
+          setUploadThresholdSummary(null);
           if (kpiAppendOption !== "append") {
             setKpiAppendOption("append");
           }
@@ -464,12 +477,14 @@ export default function UploadsPage() {
       } else {
         setUploadStatus("error");
         setUploadMessage(result?.message || "Upload failed.");
+        setUploadThresholdSummary(null);
       }
 
     } catch (error) {
       console.error("Upload error:", error);
       setUploadStatus("error");
       setUploadMessage(error.message || "Upload failed.");
+      setUploadThresholdSummary(null);
     } finally {
       setUploading(false);
       setTimeout(() => setUploadProgress(0), 500);
@@ -480,6 +495,7 @@ export default function UploadsPage() {
     setSelectedFile(null);
     setUploadStatus(null);
     setUploadMessage("");
+    setUploadThresholdSummary(null);
     clearKpiPreview();
   };
 
@@ -1035,6 +1051,32 @@ export default function UploadsPage() {
                       <p className="text-xs text-emerald-700 mt-1">
                         {uploadMessage || `Your ${selectedType.label.toLowerCase()} has been processed successfully.`}
                       </p>
+                      {uploadThresholdSummary && (
+                        <div className="mt-3 rounded-lg border border-emerald-100 bg-white/70 p-3">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-xs font-semibold text-slate-700">
+                              Threshold checked for {uploadThresholdSummary.evaluatedValues || 0} KPI value(s)
+                            </p>
+                            <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
+                              uploadThresholdSummary.hasBreaches
+                                ? "bg-red-50 text-red-700 border-red-100"
+                                : "bg-emerald-50 text-emerald-700 border-emerald-100"
+                            }`}>
+                              {uploadThresholdSummary.hasBreaches ? "Breaches found" : "No breach"}
+                            </span>
+                          </div>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {Object.entries(uploadThresholdSummary.severityCounts || {}).map(([severity, count]) => (
+                              <span
+                                key={severity}
+                                className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${severityBadgeClasses[severity] || "bg-slate-100 text-slate-700 border-slate-200"}`}
+                              >
+                                {severity}: {count}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>

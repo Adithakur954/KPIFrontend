@@ -14,6 +14,7 @@ import {
   LogOut,
   User,
   Loader2,
+  SlidersHorizontal,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -28,6 +29,7 @@ export default function TopNavbar({ user, onLogout, loading }) {
     { to: "/recommendation", label: "RCA Recommendation", icon: Lightbulb },
     { to: "/uploads", label: "Uploads", icon: Upload },
     { to: "/alarms", label: "Alarms", icon: Bell },
+    { to: "/threshold-rules", label: "Threshold Rules", icon: SlidersHorizontal },
     { to: "/Sites", label: "Sites", icon: Radio },
   ];
 

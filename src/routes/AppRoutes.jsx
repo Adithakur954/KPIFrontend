@@ -7,6 +7,7 @@ import AlarmsPage from "../features/alarms/AlarmsPage";
 import SitesPage from "../features/sites/SitesPage";
 import KpiView from "../features/kpi/KpiView";
 import RcaPage from "../features/recommendation/recommendation";
+import ThresholdRulesPage from "../features/threshold_rules/ThresholdRulesPage";
 import LoginPage from "../features/auth/LoginPage";
 import ProtectedRoute from "./ProtectedRoute";
 
@@ -26,6 +27,7 @@ export default function AppRoutes() {
         <Route path="/uploads" element={<UploadsPage />} />
         <Route path="/alarms" element={<AlarmsPage />} />
         <Route path="/sites" element={<SitesPage />} />
+        <Route path="/threshold-rules" element={<ThresholdRulesPage />} />
       </Route>
 
       {/* Catch-all redirect to home */}
