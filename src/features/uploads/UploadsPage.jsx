@@ -536,13 +536,18 @@ export default function UploadsPage() {
 
   const formatDate = (dateString) => {
     if (!dateString) return "Unknown date";
-    const date = new Date(dateString);
+    const rawValue = String(dateString);
+    const hasTimezone = /(?:z|[+-]\d{2}:?\d{2})$/i.test(rawValue);
+    const date = new Date(hasTimezone ? rawValue : `${rawValue}Z`);
     if (Number.isNaN(date.getTime())) return "Unknown date";
     const now = new Date();
-    const diffInHours = (now - date) / (1000 * 60 * 60);
+    const diffInSeconds = Math.max(0, Math.floor((now - date) / 1000));
+    const diffInMinutes = Math.floor(diffInSeconds / 60);
+    const diffInHours = diffInSeconds / (60 * 60);
     
-    if (diffInHours < 1) {
-      const diffInMinutes = Math.floor(diffInHours * 60);
+    if (diffInSeconds < 60) {
+      return `${diffInSeconds}s ago`;
+    } else if (diffInMinutes < 60) {
       return `${diffInMinutes}m ago`;
     } else if (diffInHours < 24) {
       return `${Math.floor(diffInHours)}h ago`;
@@ -1075,6 +1080,11 @@ export default function UploadsPage() {
                               </span>
                             ))}
                           </div>
+                          {(uploadThresholdSummary.matchedRules || 0) === 0 && (
+                            <p className="mt-3 text-xs font-medium text-amber-700">
+                              No threshold rule matched these KPI names. Create a rule using a KPI name from this file, for example Availability, DCR, PRB, or the full MV_ metric name.
+                            </p>
+                          )}
                         </div>
                       )}
                     </div>

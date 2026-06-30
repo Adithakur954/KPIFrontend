@@ -3,9 +3,11 @@ import {
   Activity,
   AlertCircle,
   CheckCircle,
+  FileText,
   Loader2,
   Pencil,
   Plus,
+  RotateCw,
   Save,
   Trash2,
   X,
@@ -13,7 +15,9 @@ import {
 import {
   createThresholdRule,
   deleteThresholdRule,
+  evaluateThresholdFile,
   evaluateThresholdRule,
+  fetchThresholdResults,
   fetchThresholdRules,
   updateThresholdRule,
 } from "./thresholdRuleService";
@@ -71,7 +75,9 @@ function severityClasses(severity) {
 
 export default function ThresholdRulesPage() {
   const [rules, setRules] = useState([]);
+  const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadingResults, setLoadingResults] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState("");
@@ -80,6 +86,7 @@ export default function ThresholdRulesPage() {
   const [evaluation, setEvaluation] = useState(emptyEvaluation);
   const [evaluationResult, setEvaluationResult] = useState(null);
   const [evaluating, setEvaluating] = useState(false);
+  const [recheckingFileId, setRecheckingFileId] = useState(null);
 
   const sortedRules = useMemo(() => {
     return [...rules].sort((a, b) => String(a.metricName || "").localeCompare(String(b.metricName || "")));
@@ -87,6 +94,7 @@ export default function ThresholdRulesPage() {
 
   useEffect(() => {
     loadRules();
+    loadResults();
   }, []);
 
   async function loadRules() {
@@ -98,6 +106,17 @@ export default function ThresholdRulesPage() {
       showMessage(response?.message || "Failed to load threshold rules.", "error");
     }
     setLoading(false);
+  }
+
+  async function loadResults() {
+    setLoadingResults(true);
+    const response = await fetchThresholdResults(20);
+    if (response?.success) {
+      setResults(Array.isArray(response.data) ? response.data : []);
+    } else {
+      showMessage(response?.message || "Failed to load threshold results.", "error");
+    }
+    setLoadingResults(false);
   }
 
   function showMessage(text, type = "success") {
@@ -178,6 +197,32 @@ export default function ThresholdRulesPage() {
       setEvaluationResult(null);
     }
     setEvaluating(false);
+  }
+
+  async function handleRecheck(fileId) {
+    if (!fileId) return;
+    setRecheckingFileId(fileId);
+    const response = await evaluateThresholdFile(fileId);
+    if (response?.success) {
+      showMessage("Threshold result recalculated.");
+      await loadResults();
+    } else {
+      showMessage(response?.message || "Failed to recalculate threshold result.", "error");
+    }
+    setRecheckingFileId(null);
+  }
+
+  function formatDateTime(value) {
+    if (!value) return "-";
+    const rawValue = String(value);
+    const hasTimezone = /(?:z|[+-]\d{2}:?\d{2})$/i.test(rawValue);
+    const parsed = new Date(hasTimezone ? rawValue : `${rawValue}Z`);
+    if (Number.isNaN(parsed.getTime())) return String(value);
+    return parsed.toLocaleString();
+  }
+
+  function countOf(result, severity) {
+    return result?.severityCounts?.[severity] ?? 0;
   }
 
   return (
@@ -417,6 +462,94 @@ export default function ThresholdRulesPage() {
               </div>
             )}
           </div>
+        </div>
+
+        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="flex flex-col gap-3 border-b border-slate-100 p-5 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-slate-900">File Threshold Results</h2>
+              <p className="text-xs text-slate-500">Stored results from KPI uploads and file rechecks.</p>
+            </div>
+            <button
+              type="button"
+              onClick={loadResults}
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-100"
+            >
+              <RotateCw className="h-4 w-4" />
+              Refresh Results
+            </button>
+          </div>
+
+          {loadingResults ? (
+            <div className="flex items-center justify-center py-16 text-slate-500">
+              <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+              Loading threshold results...
+            </div>
+          ) : results.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 text-center">
+              <FileText className="mb-3 h-8 w-8 text-slate-300" />
+              <p className="text-sm font-semibold text-slate-700">No file threshold results yet</p>
+              <p className="mt-1 text-xs text-slate-500">Upload KPI data after creating rules to store results here.</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-slate-100 text-sm">
+                <thead className="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
+                  <tr>
+                    <th className="px-4 py-3">File</th>
+                    <th className="px-4 py-3">Status</th>
+                    <th className="px-4 py-3">Critical</th>
+                    <th className="px-4 py-3">Major</th>
+                    <th className="px-4 py-3">Minor</th>
+                    <th className="px-4 py-3">Warning</th>
+                    <th className="px-4 py-3">Normal</th>
+                    <th className="px-4 py-3">Matched</th>
+                    <th className="px-4 py-3">Evaluated</th>
+                    <th className="px-4 py-3">Checked At</th>
+                    <th className="px-4 py-3 text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {results.map((result) => (
+                    <tr key={result.fileId} className="hover:bg-slate-50">
+                      <td className="px-4 py-3">
+                        <div className="font-semibold text-slate-800">{result.fileName || `File #${result.fileId}`}</div>
+                        <div className="text-xs text-slate-500">ID: {result.fileId}</div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${
+                          result.hasBreaches
+                            ? "border-red-100 bg-red-50 text-red-700"
+                            : "border-emerald-100 bg-emerald-50 text-emerald-700"
+                        }`}>
+                          {result.hasBreaches ? "Breaches" : "No breach"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 font-semibold text-red-700">{countOf(result, "CRITICAL")}</td>
+                      <td className="px-4 py-3 font-semibold text-orange-700">{countOf(result, "MAJOR")}</td>
+                      <td className="px-4 py-3 font-semibold text-amber-700">{countOf(result, "MINOR")}</td>
+                      <td className="px-4 py-3 font-semibold text-blue-700">{countOf(result, "WARNING")}</td>
+                      <td className="px-4 py-3 font-semibold text-emerald-700">{countOf(result, "NORMAL")}</td>
+                      <td className="px-4 py-3 text-slate-600">{result.matchedRules || 0}</td>
+                      <td className="px-4 py-3 text-slate-600">{result.evaluatedValues || 0}</td>
+                      <td className="px-4 py-3 text-slate-600">{formatDateTime(result.evaluatedAt)}</td>
+                      <td className="px-4 py-3 text-right">
+                        <button
+                          type="button"
+                          onClick={() => handleRecheck(result.fileId)}
+                          disabled={recheckingFileId === result.fileId}
+                          className="inline-flex items-center gap-2 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-60"
+                        >
+                          {recheckingFileId === result.fileId ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCw className="h-3.5 w-3.5" />}
+                          Recheck
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </div>
     </div>
