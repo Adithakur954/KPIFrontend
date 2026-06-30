@@ -214,9 +214,7 @@ export default function ThresholdRulesPage() {
 
   function formatDateTime(value) {
     if (!value) return "-";
-    const rawValue = String(value);
-    const hasTimezone = /(?:z|[+-]\d{2}:?\d{2})$/i.test(rawValue);
-    const parsed = new Date(hasTimezone ? rawValue : `${rawValue}Z`);
+    const parsed = new Date(value);
     if (Number.isNaN(parsed.getTime())) return String(value);
     return parsed.toLocaleString();
   }
