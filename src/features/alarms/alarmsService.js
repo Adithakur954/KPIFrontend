@@ -3,6 +3,7 @@ import { apiFetch } from "../../services/apiClient";
 const ENDPOINTS = {
   ALARM_UPLOAD: import.meta.env.VITE_UPLOAD_ALARM_ENDPOINT || "upload/alarm",
   ALARM_DATA: import.meta.env.VITE_ALARM_DATA_ENDPOINT || "upload/alarm-data",
+  KPI_ALARMS: import.meta.env.VITE_KPI_ALARMS_ENDPOINT || "alarms",
 };
 
 export async function uploadAlarmFile(file) {
@@ -56,5 +57,66 @@ export async function getAlarmData(params = {}) {
       ...defaultAlarmResponse,
       message: error.message || defaultAlarmResponse.message,
     };
+  }
+}
+
+export async function generateKpiAlarms(fileId) {
+  try {
+    return await apiFetch(`${ENDPOINTS.KPI_ALARMS}/generate`, {
+      method: "POST",
+      query: { fileId },
+    });
+  } catch (error) {
+    return { success: false, message: error.message || "Failed to generate KPI alarms" };
+  }
+}
+
+export async function fetchKpiAlarmSummary(fileId) {
+  try {
+    return await apiFetch(`${ENDPOINTS.KPI_ALARMS}/summary`, {
+      method: "GET",
+      query: { fileId },
+    });
+  } catch (error) {
+    return { success: false, message: error.message || "Failed to fetch alarm summary", data: null };
+  }
+}
+
+export async function fetchKpiAlarms(params = {}) {
+  try {
+    return await apiFetch(ENDPOINTS.KPI_ALARMS, {
+      method: "GET",
+      query: {
+        fileId: params.fileId,
+        severity: params.severity,
+        status: params.status,
+        page: params.page,
+        limit: params.limit,
+      },
+    });
+  } catch (error) {
+    return { success: false, message: error.message || "Failed to fetch KPI alarms", data: { items: [], total: 0 } };
+  }
+}
+
+export async function acknowledgeKpiAlarm(id, payload = {}) {
+  try {
+    return await apiFetch(`${ENDPOINTS.KPI_ALARMS}/${id}/acknowledge`, {
+      method: "POST",
+      body: payload,
+    });
+  } catch (error) {
+    return { success: false, message: error.message || "Failed to acknowledge alarm" };
+  }
+}
+
+export async function resolveKpiAlarm(id, payload = {}) {
+  try {
+    return await apiFetch(`${ENDPOINTS.KPI_ALARMS}/${id}/resolve`, {
+      method: "POST",
+      body: payload,
+    });
+  } catch (error) {
+    return { success: false, message: error.message || "Failed to resolve alarm" };
   }
 }

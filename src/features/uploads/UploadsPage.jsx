@@ -24,7 +24,7 @@ import {
   Bell,
   Search
 } from "lucide-react";
-import { uploadSitesFile, uploadKpisFileWithProgress, previewKpisFile, fetchUploads, deleteUploadById } from "./services/uploadService";
+import { uploadSitesFile, uploadKpisFileWithProgress, previewKpisFile, fetchUploadJob, fetchUploadJobs, retryUploadJob, fetchUploads, deleteUploadById } from "./services/uploadService";
 import { uploadAlarmFile } from "../alarms/alarmsService";
 import { useAuth } from "../../context/AutContext";
 
@@ -94,13 +94,18 @@ export default function UploadsPage() {
   const [uploadStatus, setUploadStatus] = useState(null);
   const [uploadMessage, setUploadMessage] = useState("");
   const [uploadThresholdSummary, setUploadThresholdSummary] = useState(null);
+  const [uploadCleaningStats, setUploadCleaningStats] = useState(null);
   const [uploadHistory, setUploadHistory] = useState([]);
+  const [uploadJobs, setUploadJobs] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
+  const [loadingJobs, setLoadingJobs] = useState(true);
+  const [retryingJobId, setRetryingJobId] = useState(null);
   const [deletingUploadId, setDeletingUploadId] = useState(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [kpiAppendOption, setKpiAppendOption] = useState("append");
   const [kpiTargetFileId, setKpiTargetFileId] = useState("");
   const [kpiRemarks, setKpiRemarks] = useState("KPI Data upload");
+  const [cleanKpiData, setCleanKpiData] = useState(true);
   const [kpiPreview, setKpiPreview] = useState(null);
   const [previewing, setPreviewing] = useState(false);
   const [previewMessage, setPreviewMessage] = useState("");
@@ -109,6 +114,7 @@ export default function UploadsPage() {
   // Fetch upload history on component mount
   useEffect(() => {
     loadUploadHistory();
+    loadUploadJobs();
   }, []);
 
   const loadUploadHistory = async () => {
@@ -133,6 +139,22 @@ export default function UploadsPage() {
     return [upload?.remarks, upload?.fileName, upload?.originalName]
       .filter(Boolean)
       .some((value) => String(value).toLowerCase().includes("kpi"));
+  };
+
+  const loadUploadJobs = async () => {
+    try {
+      setLoadingJobs(true);
+      const response = await fetchUploadJobs(10);
+      if (response.success && Array.isArray(response.data)) {
+        setUploadJobs(response.data);
+      } else {
+        setUploadJobs([]);
+      }
+    } catch (error) {
+      console.error("Error fetching upload jobs:", error);
+    } finally {
+      setLoadingJobs(false);
+    }
   };
   const kpiUploadTargets = uploadHistory.filter(isKpiUploadEntry);
   const requiresKpiTarget = kpiAppendOption === "merge" || kpiAppendOption === "overwrite";
@@ -180,6 +202,41 @@ export default function UploadsPage() {
     return Object.fromEntries(
       Object.entries(kpiColumnMapping).filter(([, value]) => value && String(value).trim()),
     );
+  };
+
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  const waitForUploadJob = async (jobId) => {
+    let lastJob = null;
+    for (let attempt = 0; attempt < 600; attempt++) {
+      const response = await fetchUploadJob(jobId);
+      if (!response?.success) {
+        throw new Error(response?.message || "Upload job status could not be loaded.");
+      }
+
+      const job = response.data || {};
+      lastJob = job;
+      setUploadProgress(Math.max(0, Math.min(100, Number(job.progressPercent) || 0)));
+      if (job.message) {
+        setUploadMessage(job.message);
+      }
+
+      if (job.status === "COMPLETED") {
+        const result = job.result || {};
+        return Object.keys(result).length > 0
+          ? result
+          : { success: true, message: job.message || "KPI upload complete.", data: {} };
+      }
+
+      if (job.status === "FAILED") {
+        const result = job.result || {};
+        throw new Error(result.message || job.message || "KPI upload failed.");
+      }
+
+      await wait(1500);
+    }
+
+    throw new Error(lastJob?.message || "KPI upload is still processing. Please refresh upload history after some time.");
   };
 
   const getColorClasses = (color) => {
@@ -419,6 +476,7 @@ export default function UploadsPage() {
     setUploadProgress(0);
     setUploadStatus(null);
     setUploadThresholdSummary(null);
+    setUploadCleaningStats(null);
 
     try {
       let result;
@@ -445,9 +503,15 @@ export default function UploadsPage() {
               appendOption: kpiAppendOption,
               fileId: kpiTargetFileId || undefined,
               columnMapping: getCleanColumnMapping(),
+              cleanKpiData,
             },
             (percent) => setUploadProgress(percent),
           );
+          const jobId = result?.data?.jobId;
+          if (result?.success && jobId) {
+            setUploadMessage(result.message || "KPI upload job started.");
+            result = await waitForUploadJob(jobId);
+          }
         } else {
           result = await selectedType.uploadFn(selectedFile, uploadedBy, remarks);
         }
@@ -458,9 +522,11 @@ export default function UploadsPage() {
         setUploadStatus("success");
         setUploadMessage(result.message || "Upload processed successfully.");
         setUploadThresholdSummary(result?.data?.thresholdSummary || null);
+        setUploadCleaningStats(result?.data?.cleaningStats || null);
         
         // Reload upload history after successful upload
         await loadUploadHistory();
+        await loadUploadJobs();
 
         // Clear after success
         setTimeout(() => {
@@ -469,6 +535,7 @@ export default function UploadsPage() {
           setUploadStatus(null);
           setUploadMessage("");
           setUploadThresholdSummary(null);
+          setUploadCleaningStats(null);
           if (kpiAppendOption !== "append") {
             setKpiAppendOption("append");
           }
@@ -478,6 +545,7 @@ export default function UploadsPage() {
         setUploadStatus("error");
         setUploadMessage(result?.message || "Upload failed.");
         setUploadThresholdSummary(null);
+        setUploadCleaningStats(null);
       }
 
     } catch (error) {
@@ -485,6 +553,8 @@ export default function UploadsPage() {
       setUploadStatus("error");
       setUploadMessage(error.message || "Upload failed.");
       setUploadThresholdSummary(null);
+      setUploadCleaningStats(null);
+      await loadUploadJobs();
     } finally {
       setUploading(false);
       setTimeout(() => setUploadProgress(0), 500);
@@ -496,6 +566,7 @@ export default function UploadsPage() {
     setUploadStatus(null);
     setUploadMessage("");
     setUploadThresholdSummary(null);
+    setUploadCleaningStats(null);
     clearKpiPreview();
   };
 
@@ -523,6 +594,39 @@ export default function UploadsPage() {
       setUploadMessage(error?.message || "Failed to delete upload.");
     } finally {
       setDeletingUploadId(null);
+    }
+  };
+
+  const handleRetryJob = async (jobId) => {
+    setRetryingJobId(jobId);
+    setUploadStatus(null);
+    setUploadMessage("Retry queued.");
+    try {
+      const response = await retryUploadJob(jobId);
+      if (!response?.success) {
+        setUploadStatus("error");
+        setUploadMessage(response?.message || "Failed to retry upload job.");
+        return;
+      }
+
+      await loadUploadJobs();
+      const result = await waitForUploadJob(jobId);
+      if (result?.success) {
+        setUploadStatus("success");
+        setUploadMessage(result.message || "Retry completed successfully.");
+        setUploadThresholdSummary(result?.data?.thresholdSummary || null);
+        setUploadCleaningStats(result?.data?.cleaningStats || null);
+        await loadUploadHistory();
+      } else {
+        setUploadStatus("error");
+        setUploadMessage(result?.message || "Retry failed.");
+      }
+    } catch (error) {
+      setUploadStatus("error");
+      setUploadMessage(error?.message || "Retry failed.");
+    } finally {
+      setRetryingJobId(null);
+      await loadUploadJobs();
     }
   };
 
@@ -991,6 +1095,24 @@ export default function UploadsPage() {
                     )}
                   </div>
 
+                  <label className="md:col-span-2 flex items-start gap-3 rounded-xl border border-emerald-100 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm">
+                    <input
+                      type="checkbox"
+                      checked={cleanKpiData}
+                      onChange={(e) => setCleanKpiData(e.target.checked)}
+                      disabled={uploading}
+                      className="mt-1 h-4 w-4 rounded border-emerald-300 text-emerald-600 focus:ring-emerald-200"
+                    />
+                    <span>
+                      <span className="block font-semibold text-slate-800">
+                        Clean KPI data before storing
+                      </span>
+                      <span className="mt-1 block text-xs text-slate-500">
+                        Removes duplicate rows, rows with no numeric KPI metrics, and rows missing date, cell, site, or technology.
+                      </span>
+                    </span>
+                  </label>
+
                   <div className="md:col-span-2">
                     <label className="mb-2 block text-sm font-medium text-slate-700">
                       Remarks
@@ -1044,6 +1166,12 @@ export default function UploadsPage() {
                 </button>
               )}
 
+              {uploading && uploadMessage && (
+                <div className="mt-3 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-xs font-medium text-blue-700">
+                  {uploadMessage}
+                </div>
+              )}
+
               {/* Status Messages */}
               {uploadStatus === "success" && (
                 <div className="mt-6 bg-emerald-50 border border-emerald-100 rounded-xl p-4 animate-in fade-in slide-in-from-top-2 duration-300">
@@ -1087,6 +1215,32 @@ export default function UploadsPage() {
                           )}
                         </div>
                       )}
+                      {uploadCleaningStats?.enabled && (
+                        <div className="mt-3 rounded-lg border border-emerald-100 bg-white/70 p-3">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-xs font-semibold text-slate-700">
+                              Cleaned KPI rows before storing
+                            </p>
+                            <span className="rounded-full border border-emerald-100 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
+                              Stored {(uploadCleaningStats.storedRows || 0).toLocaleString()} of {(uploadCleaningStats.inputRows || 0).toLocaleString()}
+                            </span>
+                          </div>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-700">
+                              Removed {(uploadCleaningStats.removedRows || 0).toLocaleString()}
+                            </span>
+                            <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
+                              Duplicates {(uploadCleaningStats.removedDuplicateRows || 0).toLocaleString()}
+                            </span>
+                            <span className="rounded-full border border-orange-200 bg-orange-50 px-2.5 py-1 text-[11px] font-semibold text-orange-700">
+                              Empty metrics {(uploadCleaningStats.removedEmptyMetricRows || 0).toLocaleString()}
+                            </span>
+                            <span className="rounded-full border border-red-200 bg-red-50 px-2.5 py-1 text-[11px] font-semibold text-red-700">
+                              Missing dimensions {(uploadCleaningStats.removedInvalidDimensionRows || 0).toLocaleString()}
+                            </span>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1112,6 +1266,97 @@ export default function UploadsPage() {
 
           {/* Sidebar - Upload History */}
           <div className="lg:col-span-1 space-y-6">
+            <div className="bg-white/80 backdrop-blur-sm rounded-3xl shadow-sm border border-slate-200/50 p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
+                  <Clock className="w-5 h-5 text-blue-600" />
+                  Upload Jobs
+                </h3>
+                <button
+                  onClick={loadUploadJobs}
+                  className="text-xs text-slate-500 hover:text-slate-700 transition-colors"
+                >
+                  Refresh
+                </button>
+              </div>
+
+              {loadingJobs ? (
+                <div className="text-center py-8">
+                  <LoaderIcon className="w-7 h-7 text-slate-400 animate-spin mx-auto mb-3" />
+                  <p className="text-sm text-slate-400">Loading jobs...</p>
+                </div>
+              ) : uploadJobs.length === 0 ? (
+                <div className="text-center py-8">
+                  <p className="text-sm text-slate-400">No upload jobs yet</p>
+                </div>
+              ) : (
+                <div className="space-y-3 max-h-[420px] overflow-y-auto pr-2">
+                  {uploadJobs.map((job) => {
+                    const statusColors = getStatusColor(job.status);
+                    const StatusIcon = getStatusIcon(job.status);
+                    const progress = Math.max(0, Math.min(100, Number(job.progressPercent) || 0));
+                    const retrying = retryingJobId === job.jobId;
+
+                    return (
+                      <div
+                        key={job.jobId}
+                        className="rounded-xl border border-slate-100 bg-slate-50 p-4"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="text-[11px] text-slate-400">Job #{job.jobId}</p>
+                            <p className="mt-1 truncate text-xs font-semibold text-slate-800">
+                              {job.fileName || "KPI upload"}
+                            </p>
+                          </div>
+                          <span className={`shrink-0 rounded-md px-2 py-1 text-[11px] font-semibold ${statusColors.bg} ${statusColors.text} flex items-center gap-1`}>
+                            <StatusIcon className="w-3 h-3" />
+                            {job.status || "UNKNOWN"}
+                          </span>
+                        </div>
+
+                        <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-200">
+                          <div
+                            className="h-full rounded-full bg-blue-500 transition-all"
+                            style={{ width: `${progress}%` }}
+                          />
+                        </div>
+                        <div className="mt-2 flex items-center justify-between gap-2">
+                          <p className="line-clamp-2 text-xs text-slate-500">
+                            {job.message || "Waiting for status..."}
+                          </p>
+                          <span className="text-[11px] font-semibold text-slate-500">
+                            {progress}%
+                          </span>
+                        </div>
+
+                        <div className="mt-3 flex items-center justify-between gap-2">
+                          <span className="text-[11px] text-slate-400">
+                            {formatDate(job.updatedAt)}
+                          </span>
+                          {job.retryable && (
+                            <button
+                              type="button"
+                              onClick={() => handleRetryJob(job.jobId)}
+                              disabled={retrying || uploading}
+                              className="inline-flex items-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-50"
+                            >
+                              {retrying ? (
+                                <LoaderIcon className="w-3 h-3 animate-spin" />
+                              ) : (
+                                <ArrowUpCircle className="w-3 h-3" />
+                              )}
+                              Retry
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
             <div className="bg-white/80 backdrop-blur-sm rounded-3xl shadow-sm border border-slate-200/50 p-6">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-semibold text-slate-800 flex items-center gap-2">

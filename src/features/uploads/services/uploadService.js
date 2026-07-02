@@ -3,6 +3,7 @@ import { apiFetch, API_BASE_URL } from "../../../services/apiClient";
 const ENDPOINTS = {
   KPI_UPLOAD: import.meta.env.VITE_UPLOAD_KPI_ENDPOINT || "upload/kpi",
   KPI_PREVIEW: import.meta.env.VITE_UPLOAD_KPI_PREVIEW_ENDPOINT || "upload/kpi/preview",
+  UPLOAD_JOB: import.meta.env.VITE_UPLOAD_JOB_ENDPOINT || "upload/jobs",
   SITE_UPLOAD: import.meta.env.VITE_UPLOAD_SITE_ENDPOINT || "upload/site",
   HISTORY: import.meta.env.VITE_UPLOAD_HISTORY_ENDPOINT || "upload/uploads/history",
   DELETE_UPLOAD: import.meta.env.VITE_UPLOAD_DELETE_ENDPOINT || "upload/uploads",
@@ -26,6 +27,10 @@ function createUploadFormData(file, uploadedBy, remarks, options = {}) {
 
   if (options.columnMapping && Object.keys(options.columnMapping).length > 0) {
     formData.append("columnMapping", JSON.stringify(options.columnMapping));
+  }
+
+  if (options.cleanKpiData !== undefined) {
+    formData.append("cleanKpiData", String(Boolean(options.cleanKpiData)));
   }
 
   const targetFileId = options.fileId || options.targetFileId;
@@ -157,6 +162,58 @@ export async function uploadSitesFile(file, uploadedBy, remarks) {
     return {
       success: false,
       message: error.message || "Site upload failed",
+      data: null,
+    };
+  }
+}
+
+export async function fetchUploadJob(jobId) {
+  try {
+    return await apiFetch(`${ENDPOINTS.UPLOAD_JOB}/${jobId}`, { method: "GET" });
+  } catch (error) {
+    console.error("[uploadService] fetchUploadJob failed", {
+      jobId,
+      message: error?.message,
+    });
+    return {
+      success: false,
+      message: error.message || "Failed to fetch upload job",
+      data: null,
+    };
+  }
+}
+
+export async function fetchUploadJobs(limit = 10) {
+  try {
+    return await apiFetch(ENDPOINTS.UPLOAD_JOB, {
+      method: "GET",
+      query: { limit },
+    });
+  } catch (error) {
+    console.error("[uploadService] fetchUploadJobs failed", {
+      message: error?.message,
+    });
+    return {
+      success: false,
+      message: error.message || "Failed to fetch upload jobs",
+      data: [],
+    };
+  }
+}
+
+export async function retryUploadJob(jobId) {
+  try {
+    return await apiFetch(`${ENDPOINTS.UPLOAD_JOB}/${jobId}/retry`, {
+      method: "POST",
+    });
+  } catch (error) {
+    console.error("[uploadService] retryUploadJob failed", {
+      jobId,
+      message: error?.message,
+    });
+    return {
+      success: false,
+      message: error.message || "Failed to retry upload job",
       data: null,
     };
   }

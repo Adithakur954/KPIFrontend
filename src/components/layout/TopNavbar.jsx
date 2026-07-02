@@ -15,6 +15,7 @@ import {
   User,
   Loader2,
   SlidersHorizontal,
+  FileCheck,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -30,6 +31,7 @@ export default function TopNavbar({ user, onLogout, loading }) {
     { to: "/uploads", label: "Uploads", icon: Upload },
     { to: "/alarms", label: "Alarms", icon: Bell },
     { to: "/threshold-rules", label: "Threshold Rules", icon: SlidersHorizontal },
+    { to: "/validation-report", label: "Validation Report", icon: FileCheck },
     { to: "/Sites", label: "Sites", icon: Radio },
   ];
 

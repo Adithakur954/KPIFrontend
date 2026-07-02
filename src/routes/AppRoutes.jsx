@@ -8,6 +8,7 @@ import SitesPage from "../features/sites/SitesPage";
 import KpiView from "../features/kpi/KpiView";
 import RcaPage from "../features/recommendation/recommendation";
 import ThresholdRulesPage from "../features/threshold_rules/ThresholdRulesPage";
+import ValidationReportPage from "../features/validation_report/ValidationReportPage";
 import LoginPage from "../features/auth/LoginPage";
 import ProtectedRoute from "./ProtectedRoute";
 
@@ -28,6 +29,7 @@ export default function AppRoutes() {
         <Route path="/alarms" element={<AlarmsPage />} />
         <Route path="/sites" element={<SitesPage />} />
         <Route path="/threshold-rules" element={<ThresholdRulesPage />} />
+        <Route path="/validation-report" element={<ValidationReportPage />} />
       </Route>
 
       {/* Catch-all redirect to home */}
