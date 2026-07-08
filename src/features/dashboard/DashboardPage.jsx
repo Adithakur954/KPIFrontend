@@ -33,6 +33,7 @@ import {
   fetchDynamicKpiSummary,
   fetchKpiUploadHistory,
 } from "../kpi/kpiService";
+import { fetchThresholdRules } from "../threshold_rules/thresholdRuleService";
 import UserContext from "../../context/fileContext";
 
 const THRESHOLD_STORAGE_PREFIX = "dashboardThresholdProfile";
@@ -50,6 +51,24 @@ const THRESHOLD_OPERATOR_SET = new Set(
 const getDashboardScopeCacheKey = (fileId) =>
   fileId ? `file:${String(fileId)}` : "all";
 let dashboardRuntimeCacheByScope = {};
+
+function normalizeMetricName(value = "") {
+  return String(value).toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function ruleTargetValue(rule) {
+  return (
+    rule?.warningValue ??
+    rule?.minorValue ??
+    rule?.majorValue ??
+    rule?.criticalValue ??
+    null
+  );
+}
+
+function ruleGoodOperator(rule) {
+  return rule?.direction === "HIGHER_IS_BAD" ? "<" : ">";
+}
 
 export default function DashboardPage() {
   const { selectedFileId, setSelectedFileId } = useContext(UserContext);
@@ -198,6 +217,48 @@ export default function DashboardPage() {
     [getThresholdOperatorStorageKey],
   );
 
+  const loadThresholdRulesForDynamicMetrics = useCallback(async (entries = []) => {
+    if (!Array.isArray(entries) || entries.length === 0) return;
+    const response = await fetchThresholdRules();
+    const rules = response?.success && Array.isArray(response.data)
+      ? response.data.filter((rule) => rule?.enabled !== false)
+      : [];
+    if (!rules.length) return;
+
+    const nextThresholds = {};
+    const nextOperators = {};
+    for (const entry of entries) {
+      const entryKey = entry?.key || "";
+      const entryLabel = entry?.label || entryKey;
+      const normalizedEntryKey = normalizeMetricName(entryKey);
+      const normalizedEntryLabel = normalizeMetricName(entryLabel);
+      const matchedRule = rules.find((rule) => {
+        const normalizedRule = normalizeMetricName(rule?.metricName || "");
+        if (!normalizedRule) return false;
+        return (
+          normalizedRule === normalizedEntryKey ||
+          normalizedRule === normalizedEntryLabel ||
+          normalizedEntryKey.includes(normalizedRule) ||
+          normalizedEntryLabel.includes(normalizedRule) ||
+          normalizedRule.includes(normalizedEntryKey) ||
+          normalizedRule.includes(normalizedEntryLabel)
+        );
+      });
+
+      const target = ruleTargetValue(matchedRule);
+      if (target === null || target === undefined) continue;
+      const numericTarget = Number(target);
+      if (!Number.isFinite(numericTarget)) continue;
+
+      nextThresholds[entryKey] = numericTarget;
+      nextOperators[entryKey] = ruleGoodOperator(matchedRule);
+    }
+
+    if (!Object.keys(nextThresholds).length) return;
+    setDefaultThresholds((prev) => ({ ...(prev || {}), ...nextThresholds }));
+    setDefaultThresholdOperators((prev) => ({ ...(prev || {}), ...nextOperators }));
+  }, []);
+
   const loadDynamicPerformanceData = useCallback(async (fileId) => {
     if (!fileId) {
       setDynamicPerformanceEntries([]);
@@ -243,13 +304,14 @@ export default function DashboardPage() {
         .filter((entry) => entry && entry.key);
 
       setDynamicPerformanceEntries(entries);
+      await loadThresholdRulesForDynamicMetrics(entries);
     } catch (error) {
       console.error("Error loading dynamic performance metrics:", error);
       setDynamicPerformanceEntries([]);
     } finally {
       setDynamicPerformanceLoading(false);
     }
-  }, []);
+  }, [loadThresholdRulesForDynamicMetrics]);
 
   async function handleGetDashboardData(fileId) {
     try {
@@ -431,6 +493,9 @@ export default function DashboardPage() {
       setThresholdOperators(cached.thresholdOperators || {});
       setLoading(false);
       setDynamicPerformanceLoading(false);
+      if (selectedDashboardFileId && Array.isArray(cached.dynamicPerformanceEntries)) {
+        loadThresholdRulesForDynamicMetrics(cached.dynamicPerformanceEntries);
+      }
       return;
     }
 
@@ -443,7 +508,7 @@ export default function DashboardPage() {
       setDynamicPerformanceEntries([]);
       handleGetPerformanceData(undefined);
     }
-  }, [selectedDashboardFileId, loadDynamicPerformanceData, isScopeHydrated]);
+  }, [selectedDashboardFileId, loadDynamicPerformanceData, loadThresholdRulesForDynamicMetrics, isScopeHydrated]);
 
   useEffect(() => {
     const scopeKey = getDashboardScopeCacheKey(selectedDashboardFileId);
@@ -760,7 +825,7 @@ export default function DashboardPage() {
     const threshold = getThresholdForKey(performanceKey);
     const operator = getOperatorForKey(performanceKey);
 
-    if (threshold === undefined || threshold === null || threshold === 0) {
+    if (threshold === undefined || threshold === null || Number.isNaN(Number(threshold))) {
       return {
         color: "from-slate-50 to-slate-100",
         border: "border-slate-200",
@@ -1145,7 +1210,7 @@ export default function DashboardPage() {
                               <div className="pt-3 border-t-2 border-white/50">
                                 {thresholdValue !== undefined &&
                                 thresholdValue !== null &&
-                                thresholdValue !== 0 ? (
+                                !Number.isNaN(Number(thresholdValue)) ? (
                                   <div className="flex items-center gap-2">
                                     <Settings className="w-3.5 h-3.5 text-slate-500" />
                                     <p className="text-xs font-bold text-slate-700">

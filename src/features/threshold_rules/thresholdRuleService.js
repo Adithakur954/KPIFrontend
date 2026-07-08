@@ -73,3 +73,15 @@ export async function evaluateThresholdFile(fileId) {
     return { success: false, message: error.message || "Failed to evaluate file threshold" };
   }
 }
+
+export async function ensureThresholdRulesForFile(fileId) {
+  try {
+    return await apiFetch(`${ENDPOINT}/ensure-file`, {
+      method: "POST",
+      query: { fileId },
+    });
+  } catch (error) {
+    console.error("[thresholdRuleService] ensureThresholdRulesForFile failed", error);
+    return { success: false, message: error.message || "Failed to create missing threshold rules" };
+  }
+}

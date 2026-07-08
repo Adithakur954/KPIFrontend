@@ -2,10 +2,11 @@ import React, { useContext, useEffect, useMemo, useRef, useState } from "react";
 import { fetchDynamicKpiColumns, fetchKpiUploadHistory } from "../kpi/kpiService";
 import {
   downloadRecommendationExport,
+  fetchRecommendationJob,
   fetchRecommendationPresets,
   loadRecommendationPreset,
-  runRecommendation,
   saveRecommendationPreset,
+  startRecommendationJob,
 } from "./recommendationService";
 import RecommendationConfigPanel from "./RecommendationConfigPanel";
 import RecommendationResultsPanel from "./RecommendationResultsPanel";
@@ -46,6 +47,7 @@ export default function RecommendationPage() {
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState("");
+  const [jobMessage, setJobMessage] = useState("");
   const [result, setResult] = useState(null);
   const [resultView, setResultView] = useState("table");
   const [resultScope, setResultScope] = useState("top10");
@@ -217,6 +219,7 @@ export default function RecommendationPage() {
       rcaThresholds: asNumberMap(rcaThresholds, RCA_DEFAULTS),
       severityThresholds: asNumberMap(severityThresholds, SEVERITY_DEFAULTS),
       anomalyThresholds: asNumberMap(anomalyThresholds, ANOMALY_DEFAULTS),
+      inputRowLimit: 10000,
     };
   }, [
     vendor,
@@ -258,9 +261,35 @@ export default function RecommendationPage() {
       return;
     }
     setError("");
+    setJobMessage("");
     setLoading(true);
     try {
-      setResult(await runRecommendation(sharedSelectedFileId, payload));
+      const started = await startRecommendationJob(sharedSelectedFileId, payload);
+      const firstJob = started?.data;
+      if (!firstJob?.jobId) {
+        throw new Error(started?.message || "Recommendation job did not start.");
+      }
+      setJobMessage(firstJob.message || started?.message || "Recommendation queued.");
+
+      let currentJob = firstJob;
+      for (let attempt = 0; attempt < 240; attempt += 1) {
+        if (currentJob.status === "COMPLETED") {
+          setResult(currentJob.result || null);
+          setJobMessage("Recommendation complete.");
+          return;
+        }
+        if (currentJob.status === "FAILED") {
+          throw new Error(currentJob?.result?.message || currentJob.message || "Recommendation failed.");
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        const next = await fetchRecommendationJob(firstJob.jobId);
+        currentJob = next?.data || currentJob;
+        setJobMessage(
+          `${currentJob.message || "Recommendation processing..."} ${currentJob.progressPercent || 0}%`,
+        );
+      }
+      throw new Error("Recommendation is still processing. Please try again in a few moments.");
     } catch (err) {
       setError(err?.message || "Failed to run recommendation.");
     } finally {
@@ -395,6 +424,7 @@ export default function RecommendationPage() {
           setPresetName={setPresetName}
           handleSavePreset={handleSavePreset}
           error={error}
+          jobMessage={jobMessage}
         />
 
         <RecommendationResultsPanel

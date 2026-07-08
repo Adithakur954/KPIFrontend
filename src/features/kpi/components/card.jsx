@@ -14,6 +14,7 @@ export function Card({ children, className = "", ...props }) {
 export function CardHeader({ children, className = "", ...props }) {
   return (
     <div
+      data-slot="card-header"
       className={`border-b border-b-gray-300/70 px-5 py-3 ${className}`}
       {...props}
     >
@@ -32,7 +33,7 @@ export function CardTitle({ children, className = "", ...props }) {
 
 export function CardContent({ children, className = "", ...props }) {
   return (
-    <div className={`p-5 ${className}`} {...props}>
+    <div data-slot="card-content" className={`p-5 ${className}`} {...props}>
       {children}
     </div>
   );

@@ -15,6 +15,7 @@ import {
 import {
   createThresholdRule,
   deleteThresholdRule,
+  ensureThresholdRulesForFile,
   evaluateThresholdFile,
   evaluateThresholdRule,
   fetchThresholdResults,
@@ -87,6 +88,7 @@ export default function ThresholdRulesPage() {
   const [evaluationResult, setEvaluationResult] = useState(null);
   const [evaluating, setEvaluating] = useState(false);
   const [recheckingFileId, setRecheckingFileId] = useState(null);
+  const [ensuringFileId, setEnsuringFileId] = useState(null);
 
   const sortedRules = useMemo(() => {
     return [...rules].sort((a, b) => String(a.metricName || "").localeCompare(String(b.metricName || "")));
@@ -212,6 +214,21 @@ export default function ThresholdRulesPage() {
     setRecheckingFileId(null);
   }
 
+  async function handleEnsureRules(fileId) {
+    if (!fileId) return;
+    setEnsuringFileId(fileId);
+    const response = await ensureThresholdRulesForFile(fileId);
+    if (response?.success) {
+      const created = response.data?.createdRules ?? 0;
+      showMessage(`Created ${created} missing threshold rule(s).`);
+      await loadRules();
+      await handleRecheck(fileId);
+    } else {
+      showMessage(response?.message || "Failed to create missing threshold rules.", "error");
+    }
+    setEnsuringFileId(null);
+  }
+
   function formatDateTime(value) {
     if (!value) return "-";
     const parsed = new Date(value);
@@ -301,6 +318,10 @@ export default function ThresholdRulesPage() {
                     <option value="LOWER_IS_BAD">Lower is bad</option>
                     <option value="HIGHER_IS_BAD">Higher is bad</option>
                   </select>
+                  <p className="mt-1 text-xs leading-5 text-slate-500">
+                    Lower is bad: value below threshold is unhealthy, like RNA or success rate.
+                    Higher is bad: value above threshold is unhealthy, like DCR, failures, PRB usage, or distance.
+                  </p>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
@@ -532,15 +553,26 @@ export default function ThresholdRulesPage() {
                       <td className="px-4 py-3 text-slate-600">{result.evaluatedValues || 0}</td>
                       <td className="px-4 py-3 text-slate-600">{formatDateTime(result.evaluatedAt)}</td>
                       <td className="px-4 py-3 text-right">
-                        <button
-                          type="button"
-                          onClick={() => handleRecheck(result.fileId)}
-                          disabled={recheckingFileId === result.fileId}
-                          className="inline-flex items-center gap-2 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-60"
-                        >
-                          {recheckingFileId === result.fileId ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCw className="h-3.5 w-3.5" />}
-                          Recheck
-                        </button>
+                        <div className="flex justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleEnsureRules(result.fileId)}
+                            disabled={ensuringFileId === result.fileId}
+                            className="inline-flex items-center gap-2 rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-60"
+                          >
+                            {ensuringFileId === result.fileId ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+                            Create Rules
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleRecheck(result.fileId)}
+                            disabled={recheckingFileId === result.fileId}
+                            className="inline-flex items-center gap-2 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-60"
+                          >
+                            {recheckingFileId === result.fileId ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCw className="h-3.5 w-3.5" />}
+                            Recheck
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}

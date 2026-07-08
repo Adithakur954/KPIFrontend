@@ -881,16 +881,21 @@ export default function KpiView() {
     try {
       setGeneratingPdfReport(true);
 
-      const chartElements = Array.from(
+      const allChartElements = Array.from(
         document.querySelectorAll("[data-kpi-pdf-card='true']"),
       );
+      const maxPdfCharts = 8;
+      const chartElements = allChartElements.slice(0, maxPdfCharts);
 
       if (!chartElements.length) {
         alert("No KPI charts are available to export.");
         return;
       }
 
-      const [{ toPng }, { jsPDF }] = await Promise.all([
+      document.body.classList.add("kpi-pdf-exporting");
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+
+      const [{ toJpeg }, { jsPDF }] = await Promise.all([
         import("html-to-image"),
         import("jspdf"),
       ]);
@@ -927,24 +932,28 @@ export default function KpiView() {
       doc.setFont("helvetica", "bold");
       doc.setFontSize(16);
       doc.text("KPI Analytics Report", margin, cursorY);
-      cursorY += 7;
+      cursorY += 6;
 
       doc.setFont("helvetica", "normal");
-      doc.setFontSize(10);
+      doc.setFontSize(9);
       doc.text(`Generated: ${new Date().toLocaleString()}`, margin, cursorY);
-      cursorY += 5;
-      doc.text(
+      cursorY += 4.5;
+      const fileLines = doc.splitTextToSize(
         `File: ${selectedKpiFileLabel || "All KPI uploads"}`,
-        margin,
-        cursorY,
+        contentWidth,
       );
-      cursorY += 5;
-      doc.text(
+      doc.text(fileLines, margin, cursorY);
+      cursorY += fileLines.length * 4;
+      const rangeLines = doc.splitTextToSize(
         `Pre Range: ${preRangeSummary} | Post Range: ${postRangeSummary}`,
+        contentWidth,
+      );
+      doc.text(
+        rangeLines,
         margin,
         cursorY,
       );
-      cursorY += 5;
+      cursorY += rangeLines.length * 4;
 
       if (selectedFilterSummary) {
         const wrappedFilterLines = doc.splitTextToSize(
@@ -952,10 +961,21 @@ export default function KpiView() {
           contentWidth,
         );
         doc.text(wrappedFilterLines, margin, cursorY);
-        cursorY += wrappedFilterLines.length * 4 + 1;
+        cursorY += wrappedFilterLines.length * 4;
       } else {
         doc.text("Selected Filters: None", margin, cursorY);
-        cursorY += 6;
+        cursorY += 5;
+      }
+
+      if (allChartElements.length > chartElements.length) {
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(8);
+        doc.text(
+          `Charts included: ${chartElements.length} of ${allChartElements.length} visible charts for faster export.`,
+          margin,
+          cursorY,
+        );
+        cursorY += 5;
       }
 
       for (let i = 0; i < chartElements.length; i += 1) {
@@ -966,16 +986,22 @@ export default function KpiView() {
         const rect = chartElement.getBoundingClientRect();
         if (!rect.width || !rect.height) continue;
 
-        const imageData = await toPng(chartElement, {
+        const imageData = await toJpeg(chartElement, {
           cacheBust: true,
-          pixelRatio: 2,
+          pixelRatio: 1,
+          quality: 0.82,
           backgroundColor: "#ffffff",
+          filter: (node) =>
+            !(
+              node instanceof HTMLElement &&
+              node.getAttribute("data-kpi-pdf-hide") === "true"
+            ),
         });
 
         const imgWidth = rect.width;
         const imgHeight = rect.height;
         const renderedHeight = (imgHeight * contentWidth) / imgWidth;
-        const maxPageImageHeight = pageHeight - margin * 2 - 6;
+        const maxPageImageHeight = Math.min(88, pageHeight - margin * 2 - 6);
         const finalImageHeight = Math.min(renderedHeight, maxPageImageHeight);
 
         if (cursorY + 5 + finalImageHeight > pageHeight - margin) {
@@ -984,13 +1010,13 @@ export default function KpiView() {
         }
 
         doc.setFont("helvetica", "bold");
-        doc.setFontSize(11);
+        doc.setFontSize(10);
         doc.text(chartTitle, margin, cursorY);
         cursorY += 4;
 
         doc.addImage(
           imageData,
-          "PNG",
+          "JPEG",
           margin,
           cursorY,
           contentWidth,
@@ -998,7 +1024,7 @@ export default function KpiView() {
           undefined,
           "FAST",
         );
-        cursorY += finalImageHeight + 5;
+        cursorY += finalImageHeight + 4;
       }
 
       const safeNamePart = selectedKpiFileId
@@ -1018,6 +1044,7 @@ export default function KpiView() {
         `Failed to export KPI PDF report: ${error?.message || "Unknown error"}`,
       );
     } finally {
+      document.body.classList.remove("kpi-pdf-exporting");
       setGeneratingPdfReport(false);
     }
   };
@@ -2641,7 +2668,7 @@ function KpiChart({
           </div>
 
           {/* Dropdowns Section */}
-          <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-3 flex-wrap" data-kpi-pdf-hide="true">
             {!kpi.loading && kpi.data.length > 0 && (
               <>
                 {/* Sampling Toggle */}

@@ -53,6 +53,7 @@ export default function RecommendationConfigPanel({
   setPresetName,
   handleSavePreset,
   error,
+  jobMessage,
 }) {
   return (
     <>
@@ -500,6 +501,7 @@ export default function RecommendationConfigPanel({
             </div>
           </div>
         </div>
+        {jobMessage ? <div className="mx-6 mb-3 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700">{jobMessage}</div> : null}
         {error ? <div className="mx-6 mb-6 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{error}</div> : null}
       </section>
     </>

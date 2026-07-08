@@ -17,6 +17,37 @@ export async function runRecommendation(fileId, payload = {}) {
   }
 }
 
+export async function startRecommendationJob(fileId, payload = {}) {
+  try {
+    return await apiFetch("kpi/recommendation/jobs", {
+      method: "POST",
+      query: { fileId },
+      body: payload,
+    });
+  } catch (error) {
+    console.error("[recommendationService] startRecommendationJob failed", {
+      fileId,
+      payload,
+      message: error?.message,
+    });
+    throw error;
+  }
+}
+
+export async function fetchRecommendationJob(jobId) {
+  try {
+    return await apiFetch(`kpi/recommendation/jobs/${encodeURIComponent(jobId)}`, {
+      method: "GET",
+    });
+  } catch (error) {
+    console.error("[recommendationService] fetchRecommendationJob failed", {
+      jobId,
+      message: error?.message,
+    });
+    throw error;
+  }
+}
+
 export async function fetchRecommendationPresets() {
   try {
     return await apiFetch("kpi/recommendation/presets", {
