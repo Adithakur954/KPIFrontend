@@ -1,5 +1,6 @@
 import { AlertTriangle, Eye, EyeOff, Sparkles } from "lucide-react";
 import ToggleSwitch from "../../../components/common/ToggleSwitch";
+import LbPredictionControls from "./LbPredictionControls";
 import MapKpiSelector from "./MapKpiSelector";
 
 export default function MapFilterPanel({
@@ -32,6 +33,11 @@ export default function MapFilterPanel({
   onToggleWorstSites,
   showPredictions,
   onTogglePredictions,
+  predictionSummary,
+  predictionItems = [],
+  onPredictionClick,
+  formatNumber = (value) => value,
+  lbPredictionControlProps,
   showAlarms,
   onToggleAlarms,
 }) {
@@ -191,6 +197,17 @@ export default function MapFilterPanel({
             activeColor="bg-purple-500"
             Icon={Sparkles}
           />
+
+          {showPredictions && (
+            <div className="rounded-xl border border-purple-300/40 bg-purple-950/30 p-3">
+              {lbPredictionControlProps && (
+                <div className="mb-3">
+                  <LbPredictionControls {...lbPredictionControlProps} compact />
+                </div>
+              )}
+              
+            </div>
+          )}
 
           <ToggleSwitch
             enabled={showAlarms}

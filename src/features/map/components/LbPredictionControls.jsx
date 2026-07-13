@@ -1,4 +1,4 @@
-import { Loader2, Sparkles } from "lucide-react";
+import { FileUp, Loader2, Sparkles } from "lucide-react";
 
 export default function LbPredictionControls({
   selectedFileId,
@@ -70,13 +70,21 @@ export default function LbPredictionControls({
           className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[11px] font-semibold text-slate-700"
           title="Rule-based DL throughput quantile"
         />
-        <input
-          type="file"
-          accept=".xlsx,.xls,.csv"
-          onChange={(event) => onTaFileChange(event.target.files?.[0] || null)}
-          className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[11px] text-slate-600 file:hidden"
+        <label
+          className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[11px] font-semibold text-slate-700 hover:border-purple-300 hover:bg-purple-50"
           title={taFile?.name || "Optional TA distance file"}
-        />
+        >
+          <FileUp className="h-3.5 w-3.5 shrink-0 text-purple-600" />
+          <span className="min-w-0 truncate">
+            {taFile?.name || "Optional TA Distance File"}
+          </span>
+          <input
+            type="file"
+            accept=".xlsx,.xls,.csv"
+            onChange={(event) => onTaFileChange(event.target.files?.[0] || null)}
+            className="hidden"
+          />
+        </label>
       </div>
       {!taFile && (
         <div className="mt-2 rounded-lg bg-amber-50 px-2 py-1.5 text-[11px] font-bold text-amber-700">
@@ -88,7 +96,7 @@ export default function LbPredictionControls({
           {warnings[0]}
         </div>
       )}
-      {(message || result) && (
+      {(message || result) && ( 
         <div className={`mt-2 rounded-lg px-2 py-1.5 text-[11px] font-bold ${statusIsSuccess ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>
           {message}
           {result && ` Rows: ${formatNumber(result.summary?.rows)} | Unbalanced: ${formatNumber(result.summary?.unbalanced_count)}`}

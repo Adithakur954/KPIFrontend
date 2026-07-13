@@ -1,4 +1,9 @@
-import { Hash, Radio } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ChevronDown, Hash, Radio } from "lucide-react";
+
+const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+const initialLegendWidth = 250;
+const legendMargin = 16;
 
 export default function MapSiteLegend({
   sites = [],
@@ -10,23 +15,177 @@ export default function MapSiteLegend({
   onSiteLeave,
   getColorBySector,
 }) {
+  const [open, setOpen] = useState(false);
+  const [position, setPosition] = useState({ x: legendMargin, y: legendMargin });
+  const [size, setSize] = useState({ width: initialLegendWidth, height: 360 });
+  const legendRef = useRef(null);
+  const dragStateRef = useRef(null);
+  const didSetInitialPositionRef = useRef(false);
+  const positionRef = useRef(position);
+  const sizeRef = useRef(size);
+  const activeSite = useMemo(() => {
+    if (!selectedSite) return null;
+    return sites.find((site) => site.SITEID === selectedSite.SITEID) || selectedSite;
+  }, [selectedSite, sites]);
+
+  const applyPosition = useCallback((nextPosition) => {
+    positionRef.current = nextPosition;
+    setPosition(nextPosition);
+  }, []);
+
+  const applySize = useCallback((nextSize) => {
+    sizeRef.current = nextSize;
+    setSize(nextSize);
+  }, []);
+
+  const clampToViewport = useCallback((nextPosition, nextSize) => {
+    const parentRect = legendRef.current?.parentElement?.getBoundingClientRect();
+    const viewportWidth = parentRect?.width || window.innerWidth || 1280;
+    const viewportHeight = parentRect?.height || window.innerHeight || 720;
+    const maxWidth = Math.max(240, Math.min(520, viewportWidth - legendMargin * 2));
+    const maxHeight = Math.max(180, Math.min(620, viewportHeight - legendMargin * 2));
+    const width = clamp(nextSize.width, 240, maxWidth);
+    const height = clamp(nextSize.height, 180, maxHeight);
+    return {
+      position: {
+        x: clamp(nextPosition.x, legendMargin, Math.max(legendMargin, viewportWidth - width - legendMargin)),
+        y: clamp(nextPosition.y, legendMargin, Math.max(legendMargin, viewportHeight - legendMargin - 80)),
+      },
+      size: { width, height },
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleResize = () => {
+      const parentRect = legendRef.current?.parentElement?.getBoundingClientRect();
+      const parentWidth = parentRect?.width || window.innerWidth || 1280;
+      const nextPosition = didSetInitialPositionRef.current
+        ? positionRef.current
+        : { x: parentWidth - sizeRef.current.width - legendMargin, y: legendMargin };
+      didSetInitialPositionRef.current = true;
+      const clamped = clampToViewport(nextPosition, sizeRef.current);
+      applyPosition(clamped.position);
+      applySize(clamped.size);
+    };
+    window.addEventListener("resize", handleResize);
+    handleResize();
+    return () => window.removeEventListener("resize", handleResize);
+  }, [applyPosition, applySize, clampToViewport]);
+
+  const handlePointerMove = useCallback((event) => {
+    const state = dragStateRef.current;
+    if (!state) return;
+    const dx = event.clientX - state.startX;
+    const dy = event.clientY - state.startY;
+    const viewportWidth = window.innerWidth || 1280;
+    const viewportHeight = window.innerHeight || 720;
+
+    if (state.mode === "drag") {
+      const clamped = clampToViewport({
+        x: state.startPosition.x + dx,
+        y: state.startPosition.y + dy,
+      }, state.startSize);
+      applyPosition(clamped.position);
+      return;
+    }
+
+    const clamped = clampToViewport(state.startPosition, {
+      width: clamp(state.startSize.width + dx, 240, Math.max(240, Math.min(520, viewportWidth - state.startPosition.x - legendMargin))),
+      height: clamp(state.startSize.height + dy, 180, Math.max(180, Math.min(620, viewportHeight - state.startPosition.y - legendMargin))),
+    });
+    applyPosition(clamped.position);
+    applySize(clamped.size);
+  }, [applyPosition, applySize, clampToViewport]);
+
+  const stopPointerTracking = useCallback(() => {
+    dragStateRef.current = null;
+    window.removeEventListener("pointermove", handlePointerMove);
+    window.removeEventListener("pointerup", stopPointerTracking);
+  }, [handlePointerMove]);
+
+  const startPointerTracking = useCallback((event, mode) => {
+    event.preventDefault();
+    event.stopPropagation();
+    dragStateRef.current = {
+      mode,
+      startX: event.clientX,
+      startY: event.clientY,
+      startPosition: positionRef.current,
+      startSize: sizeRef.current,
+    };
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", stopPointerTracking);
+  }, [handlePointerMove, stopPointerTracking]);
+
   return (
     <div
-      className={`absolute bottom-6 z-10 w-80 max-w-[calc(100vw-2rem)] transition-all duration-300 ${
-        sidebarOpen ? "left-[440px]" : "left-6"
-      }`}
+      ref={legendRef}
+      className="absolute z-10 max-w-[calc(100vw-1rem)]"
+      style={{
+        left: position.x,
+        top: position.y,
+        width: size.width,
+      }}
     >
-      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white/95 shadow-2xl backdrop-blur">
-        <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
-          <div>
-            <div className="text-sm font-black text-slate-900">Site Legend</div>
-            <div className="text-xs text-slate-500">Click a site to highlight it on the map</div>
+      <div className="relative overflow-hidden rounded-[22px] border border-slate-200 bg-white/95 shadow-2xl ring-1 ring-white/70 backdrop-blur">
+        <div className="flex w-full items-center justify-between gap-3 border-b border-slate-100 px-4 py-3 transition hover:bg-slate-50">
+          <div
+            role="button"
+            tabIndex={0}
+            onPointerDown={(event) => startPointerTracking(event, "drag")}
+            className="flex min-w-0 flex-1 cursor-move items-center gap-3"
+            title="Drag to move legend"
+          >
+            <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-sm">
+              <Radio className="h-4 w-4" />
+            </span>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-black text-slate-900">Site Legend</span>
+                <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-black text-blue-700">
+                  {sites.length}
+                </span>
+              </div>
+              <div className="truncate text-xs text-slate-500">
+                {open
+                  ? "Click a site to highlight it on the map"
+                  : activeSite
+                    ? `Selected: ${activeSite.Site_Name || activeSite.SITEID}`
+                    : "Open dropdown to choose a site"}
+              </div>
+            </div>
           </div>
-          <span className="rounded-full bg-blue-50 px-2 py-1 text-xs font-black text-blue-700">
-            {sites.length}
-          </span>
+          <button
+            type="button"
+            onClick={() => setOpen((value) => !value)}
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+            title={open ? "Collapse legend" : "Expand legend"}
+          >
+            <ChevronDown className={`h-5 w-5 transition-transform ${open ? "rotate-180" : ""}`} />
+          </button>
         </div>
-        <div className="max-h-80 overflow-y-auto p-2">
+
+        {!open && activeSite && (
+          <button
+            type="button"
+            onClick={() => onSiteClick(activeSite)}
+            className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-blue-50"
+          >
+            <div className="min-w-0">
+              <div className="truncate text-sm font-black text-slate-900">{activeSite.Site_Name}</div>
+              <div className="mt-0.5 flex items-center gap-1 text-xs text-slate-500">
+                <Hash className="h-3 w-3 shrink-0" />
+                <span className="truncate">{activeSite.SITEID}</span>
+              </div>
+            </div>
+            <span className="rounded-full bg-blue-600 px-2.5 py-1 text-xs font-black text-white">
+              Active
+            </span>
+          </button>
+        )}
+
+        {open && (
+        <div className="overflow-y-auto p-2" style={{ maxHeight: size.height }}>
           {sites.length === 0 ? (
             <p className="px-3 py-4 text-sm text-slate-500">No plotted sites found.</p>
           ) : (
@@ -84,6 +243,14 @@ export default function MapSiteLegend({
             })
           )}
         </div>
+        )}
+        <button
+          type="button"
+          onPointerDown={(event) => startPointerTracking(event, "resize")}
+          className="absolute bottom-1 right-1 h-5 w-5 cursor-nwse-resize rounded-br-[18px] rounded-tl-lg border-b-2 border-r-2 border-slate-400/80 bg-white/70 hover:bg-blue-50"
+          title="Resize legend"
+          aria-label="Resize site legend"
+        />
       </div>
     </div>
   );
