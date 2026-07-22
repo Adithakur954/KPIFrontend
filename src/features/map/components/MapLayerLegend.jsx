@@ -1,4 +1,4 @@
-import { AlertTriangle, Radio, Sparkles } from "lucide-react";
+import { AlertTriangle, Hash, Radio, Sparkles } from "lucide-react";
 
 export default function MapLayerLegend({
   showCells,
@@ -12,6 +12,10 @@ export default function MapLayerLegend({
   alarmCounts = {},
   predictionActionColors = {},
   severityMarkerColors = {},
+  selectedPci = "",
+  sourcePciLabel = "",
+  selectedPciCount = 0,
+  pciNeighbourCount = 0,
 }) {
   const predictionItems = [
     ["Load Balance", "LOAD_BALANCE"],
@@ -29,37 +33,39 @@ export default function MapLayerLegend({
 
   const cellItems = Object.entries(cellSectorCounts).sort(([left], [right]) => left.localeCompare(right));
 
-  if (!showCells && !showWorstSites && !showPredictions && !showAlarms) return null;
+  const showPciLegend = Boolean(selectedPci);
+
+  if (!showCells && !showWorstSites && !showPredictions && !showAlarms && !showPciLegend) return null;
 
   return (
-    <div className="absolute bottom-5 right-5 z-10 w-72 max-w-[calc(100vw-2rem)] rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-2xl ring-1 ring-white/70 backdrop-blur">
-      <div className="mb-3 flex items-center justify-between gap-3">
+    <div className="absolute bottom-6 right-6 z-10 w-72 max-w-[calc(100vw-2rem)] rounded-2xl border border-slate-800/80 bg-slate-950/90 p-3.5 text-slate-100 shadow-2xl backdrop-blur-xl ring-1 ring-white/10">
+      <div className="mb-3 flex items-center justify-between gap-3 border-b border-slate-800/80 pb-2.5">
         <div>
-          <div className="text-sm font-black text-slate-900">Map Layer Legend</div>
-          <div className="text-xs text-slate-500">Dynamic marker colors and counts</div>
+          <div className="text-xs font-black tracking-wide text-white uppercase">Map Layer Legend</div>
+          <div className="text-[11px] text-slate-400">Live marker counts & color schema</div>
         </div>
       </div>
 
       <div className="space-y-3">
         {showCells && (
-          <div className="rounded-xl bg-blue-50 p-2">
+          <div className="rounded-xl border border-blue-500/20 bg-blue-950/30 p-2.5">
             <div className="mb-2 flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2 text-xs font-black uppercase text-blue-700">
-                <Radio className="h-3.5 w-3.5" />
-                Cells
+              <div className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-blue-400">
+                <Radio className="h-3.5 w-3.5 text-blue-400" />
+                <span>Cells</span>
               </div>
-              <span className="rounded-full bg-white px-2 py-0.5 text-xs font-black text-blue-700">
+              <span className="rounded-full bg-blue-600/30 px-2 py-0.5 text-xs font-black text-blue-300 border border-blue-500/40">
                 {cellItems.reduce((sum, [, count]) => sum + Number(count || 0), 0)}
               </span>
             </div>
             <div className="grid grid-cols-2 gap-1.5">
               {cellItems.length === 0 ? (
-                <div className="col-span-2 text-xs font-semibold text-slate-500">No visible cells</div>
+                <div className="col-span-2 text-xs font-semibold text-slate-400">No visible cells</div>
               ) : (
                 cellItems.map(([sector, count]) => {
                   const colors = getColorBySector?.(sector, 1) || {};
                   return (
-                    <div key={sector} className="flex items-center justify-between gap-2 rounded-lg bg-white px-2 py-1">
+                    <div key={sector} className="flex items-center justify-between gap-2 rounded-lg border border-slate-800 bg-slate-900/80 px-2.5 py-1">
                       <div className="flex min-w-0 items-center gap-1.5">
                         <span
                           className="h-3 w-3 shrink-0 rounded"
@@ -68,9 +74,9 @@ export default function MapLayerLegend({
                             border: `1px solid ${colors.stroke || "#2563EB"}`,
                           }}
                         />
-                        <span className="truncate text-[11px] font-bold text-slate-700">Sector {sector}</span>
+                        <span className="truncate text-[11px] font-bold text-slate-300">Sector {sector}</span>
                       </div>
-                      <span className="text-[11px] font-black text-slate-900">{count}</span>
+                      <span className="text-[11px] font-black text-white">{count}</span>
                     </div>
                   );
                 })
@@ -79,39 +85,74 @@ export default function MapLayerLegend({
           </div>
         )}
 
-        {showWorstSites && (
-          <div className="rounded-xl bg-red-50 p-2">
+        {showPciLegend && (
+          <div className="rounded-xl border border-amber-500/20 bg-amber-950/30 p-2.5">
             <div className="mb-2 flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2 text-xs font-black uppercase text-red-700">
-                <AlertTriangle className="h-3.5 w-3.5" />
-                Worst Cells
+              <div className="flex min-w-0 items-center gap-1.5 text-xs font-black uppercase tracking-wider text-amber-400">
+                <Hash className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate">PCI {selectedPci}</span>
               </div>
-              <span className="rounded-full bg-white px-2 py-0.5 text-xs font-black text-red-700">{worstCount}</span>
+              <span className="rounded-full bg-amber-600/30 px-2 py-0.5 text-xs font-black text-amber-300 border border-amber-500/40">
+                {selectedPciCount}
+              </span>
             </div>
-            <div className="flex items-center gap-2 text-xs font-bold text-slate-700">
-              <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-red-600 text-[9px] font-black text-white">1</span>
-              Red numbered markers
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between gap-2 rounded-lg border border-slate-800 bg-slate-900/80 px-2.5 py-1">
+                <div className="flex min-w-0 items-center gap-1.5">
+                  <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-amber-400 ring-2 ring-amber-500/40" />
+                  <span className="truncate text-[11px] font-bold text-slate-300">
+                    Source: {sourcePciLabel || "Selected site"}
+                  </span>
+                </div>
+              </div>
+              <div className="flex items-center justify-between gap-2 rounded-lg border border-slate-800 bg-slate-900/80 px-2.5 py-1">
+                <div className="flex min-w-0 items-center gap-1.5">
+                  <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-red-500" />
+                  <span className="truncate text-[11px] font-bold text-slate-300">Same PCI neighbours</span>
+                </div>
+                <span className="text-[11px] font-black text-white">{pciNeighbourCount}</span>
+              </div>
+              <div className="flex items-center gap-1.5 rounded-lg border border-slate-800 bg-slate-900/80 px-2.5 py-1">
+                <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-emerald-500" />
+                <span className="truncate text-[11px] font-bold text-slate-300">Other visible sites</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showWorstSites && (
+          <div className="rounded-xl border border-red-500/20 bg-red-950/30 p-2.5">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-red-400">
+                <AlertTriangle className="h-3.5 w-3.5" />
+                <span>Worst Cells</span>
+              </div>
+              <span className="rounded-full bg-red-600/30 px-2 py-0.5 text-xs font-black text-red-300 border border-red-500/40">{worstCount}</span>
+            </div>
+            <div className="flex items-center gap-2 text-xs font-bold text-slate-300">
+              <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-red-600 text-[9px] font-black text-white shadow-sm">1</span>
+              <span>Red numbered markers</span>
             </div>
           </div>
         )}
 
         {showPredictions && (
-          <div className="rounded-xl bg-purple-50 p-2">
-            <div className="mb-2 flex items-center gap-2 text-xs font-black uppercase text-purple-700">
+          <div className="rounded-xl border border-purple-500/20 bg-purple-950/30 p-2.5">
+            <div className="mb-2 flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-purple-400">
               <Sparkles className="h-3.5 w-3.5" />
-              Prediction Cells
+              <span>Prediction Cells</span>
             </div>
             <div className="grid grid-cols-2 gap-1.5">
               {predictionItems.length === 0 ? (
-                <div className="col-span-2 text-xs font-semibold text-slate-500">No prediction markers</div>
+                <div className="col-span-2 text-xs font-semibold text-slate-400">No prediction markers</div>
               ) : (
                 predictionItems.map(([label, key]) => (
-                  <div key={key} className="flex items-center justify-between gap-2 rounded-lg bg-white px-2 py-1">
+                  <div key={key} className="flex items-center justify-between gap-2 rounded-lg border border-slate-800 bg-slate-900/80 px-2.5 py-1">
                     <div className="flex min-w-0 items-center gap-1.5">
-                      <span className="h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: predictionActionColors[key] || "#7C3AED" }} />
-                      <span className="truncate text-[11px] font-bold text-slate-700">{label}</span>
+                      <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: predictionActionColors[key] || "#7C3AED" }} />
+                      <span className="truncate text-[11px] font-bold text-slate-300">{label}</span>
                     </div>
-                    <span className="text-[11px] font-black text-slate-900">{predictionCounts[key]}</span>
+                    <span className="text-[11px] font-black text-white">{predictionCounts[key]}</span>
                   </div>
                 ))
               )}
@@ -120,22 +161,22 @@ export default function MapLayerLegend({
         )}
 
         {showAlarms && (
-          <div className="rounded-xl bg-amber-50 p-2">
-            <div className="mb-2 flex items-center gap-2 text-xs font-black uppercase text-amber-700">
+          <div className="rounded-xl border border-amber-500/20 bg-amber-950/30 p-2.5">
+            <div className="mb-2 flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-amber-400">
               <Radio className="h-3.5 w-3.5" />
-              Alarm Cells
+              <span>Alarm Cells</span>
             </div>
             <div className="grid grid-cols-2 gap-1.5">
               {alarmItems.length === 0 ? (
-                <div className="col-span-2 text-xs font-semibold text-slate-500">No alarm markers</div>
+                <div className="col-span-2 text-xs font-semibold text-slate-400">No alarm markers</div>
               ) : (
                 alarmItems.map(([label, key]) => (
-                  <div key={key} className="flex items-center justify-between gap-2 rounded-lg bg-white px-2 py-1">
+                  <div key={key} className="flex items-center justify-between gap-2 rounded-lg border border-slate-800 bg-slate-900/80 px-2.5 py-1">
                     <div className="flex min-w-0 items-center gap-1.5">
-                      <span className="h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: severityMarkerColors[key] || "#2563EB" }} />
-                      <span className="truncate text-[11px] font-bold text-slate-700">{label}</span>
+                      <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: severityMarkerColors[key] || "#2563EB" }} />
+                      <span className="truncate text-[11px] font-bold text-slate-300">{label}</span>
                     </div>
-                    <span className="text-[11px] font-black text-slate-900">{alarmCounts[key]}</span>
+                    <span className="text-[11px] font-black text-white">{alarmCounts[key]}</span>
                   </div>
                 ))
               )}
@@ -146,3 +187,4 @@ export default function MapLayerLegend({
     </div>
   );
 }
+

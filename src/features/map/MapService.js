@@ -1,9 +1,10 @@
 import { apiFetch } from "../../services/apiClient";
 
-export async function getMapDetails(fileId) {
+export async function getMapDetails(fileId, options = {}) {
   try {
     return await apiFetch("upload/site-data", {
       method: "GET",
+      signal: options.signal,
       query: {
         page: 1,
         limit: 10000,

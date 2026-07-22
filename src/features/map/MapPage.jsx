@@ -75,6 +75,7 @@ const predictionActionLabels = {
 const clampMapScale = (value) => Math.min(8, Math.max(0.05, Number(value || 1)));
 const MAX_PREDICTION_MAP_MARKERS = 600;
 const predictionActionDisplayOrder = ["LOAD_BALANCE", "QUALITY_CHECK", "CAPACITY_REVIEW", "COVERAGE_CHECK", "OBSERVE"];
+const MAP_DATA_TIMEOUT_MS = 20000;
 const analyticsTabs = [
   { value: "overview", label: "Overview" },
   { value: "predictions", label: "Prediction" },
@@ -1120,16 +1121,16 @@ export default function MapPage() {
   const [map, setMap] = useState(null);
   const [selectedSite, setSelectedSite] = useState(null);
   const [selectedCell, setSelectedCell] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [drawerMode, setDrawerMode] = useState("filter");
   const [analyticsDrawerOpen, setAnalyticsDrawerOpen] = useState(false);
   const [hoveredSite, setHoveredSite] = useState(null);
   const [zoomLevel, setZoomLevel] = useState(11);
   const [showCells, setShowCells] = useState(false);
-  const [showAlarms, setShowAlarms] = useState(true);
+  const [showAlarms, setShowAlarms] = useState(false);
   const [showWorstSites, setShowWorstSites] = useState(false);
-  const [showPredictions, setShowPredictions] = useState(true);
+  const [showPredictions, setShowPredictions] = useState(false);
   const [siteMarkerScale, setSiteMarkerScale] = useState(1);
   const [cellRadiusScale, setCellRadiusScale] = useState(1);
   const [selectedTechnologyFilter, setSelectedTechnologyFilter] = useState("");
@@ -1137,7 +1138,7 @@ export default function MapPage() {
   const [pciFilter, setPciFilter] = useState("");
   const [predictionMarkerCount, setPredictionMarkerCount] = useState(0);
   const [predictionApproxCount, setPredictionApproxCount] = useState(0);
-  const [activeMapPanel, setActiveMapPanel] = useState("predictions");
+  const [activeMapPanel, setActiveMapPanel] = useState("overview");
   const [selectedPci, setSelectedPci] = useState("");
   const [selectedPciSiteId, setSelectedPciSiteId] = useState("");
   const [exportingMapPdf, setExportingMapPdf] = useState(false);
@@ -1231,6 +1232,8 @@ export default function MapPage() {
   // Fetch map data
   useEffect(() => {
     let isCurrentRequest = true;
+    const controller = new AbortController();
+    let timeoutId = null;
     const fetchData = async () => {
       if (!selectedSiteFileId) {
         setMapData([]);
@@ -1242,7 +1245,8 @@ export default function MapPage() {
       }
       try {
         setLoading(true);
-        const response = await getMapDetails(selectedSiteFileId);
+        timeoutId = window.setTimeout(() => controller.abort(), MAP_DATA_TIMEOUT_MS);
+        const response = await getMapDetails(selectedSiteFileId, { signal: controller.signal });
         if (!isCurrentRequest) {
           return;
         }
@@ -1266,8 +1270,18 @@ export default function MapPage() {
           return;
         }
         console.error("Error fetching map data:", error);
-        setFetchError(error?.message || "Failed to fetch uploaded site data.");
+        const message =
+          error?.name === "AbortError"
+            ? "Map data request timed out. Check backend/database, then refresh map data."
+            : error?.message || "Failed to fetch uploaded site data.";
+        setFetchError(message);
+        setMapData([]);
+        setTotalSiteRows(0);
+        setMissingCoordinateRows(0);
       } finally {
+        if (timeoutId) {
+          window.clearTimeout(timeoutId);
+        }
         if (isCurrentRequest) {
           setLoading(false);
         }
@@ -1276,12 +1290,25 @@ export default function MapPage() {
     fetchData();
     return () => {
       isCurrentRequest = false;
+      controller.abort();
+      if (timeoutId) {
+        window.clearTimeout(timeoutId);
+      }
     };
   }, [selectedSiteFileId, siteUploads.length]);
 
   useEffect(() => {
     const loadUploads = async () => {
       const response = await fetchUploads();
+      if (!response?.success) {
+        setFetchError(response?.message || "Failed to load uploaded files. Please login again or restart backend.");
+        setUploads([]);
+        setSiteUploads([]);
+        setSelectedFileId("");
+        setSelectedSiteFileId("");
+        setLoading(false);
+        return;
+      }
       const items = response?.success && Array.isArray(response.data) ? response.data : [];
       const kpiUploads = items.filter(isKpiUpload);
       const mapSiteUploads = items.filter(isSiteUpload);
@@ -1760,6 +1787,14 @@ export default function MapPage() {
       }))
       .sort((a, b) => (a.distanceKm ?? Number.POSITIVE_INFINITY) - (b.distanceKm ?? Number.POSITIVE_INFINITY));
   }, [selectedPciSites, sourcePciSite]);
+
+  const sourcePciLabel = useMemo(() => {
+    if (!sourcePciSite) return "";
+    const sourceCell = sourcePciSite.matchingPciCells?.find(
+      (cell) => selectedCell?.Cell_Name && normalizeKey(cell.Cell_Name) === normalizeKey(selectedCell.Cell_Name),
+    );
+    return sourceCell?.Cell_Name || sourcePciSite.Site_Name || sourcePciSite.SITEID || "";
+  }, [sourcePciSite, selectedCell]);
 
   const deckCells = useMemo(() => {
     if (!showCells) return [];
@@ -3237,7 +3272,9 @@ export default function MapPage() {
     const shouldHighlight = hasAlarm || hasWorst || hasSelectedPci || hasWorstSite || hasPrediction;
     const fillColor = hasAlarm
       ? severityMarkerColors[alarmSeverity]
-      : hasSelectedPci
+      : isSource
+        ? "#FACC15"
+        : hasSelectedPci
         ? "#DC2626"
         : hasWorstSite
           ? "#EA580C"
@@ -3253,7 +3290,7 @@ export default function MapPage() {
       scale: (shouldHighlight ? (selected || isSource ? 9 : 7) : (selected ? 7 : 5.5)) * siteMarkerScale,
       fillColor,
       fillOpacity: 1,
-      strokeColor: isSource ? "#FACC15" : shouldHighlight || selected ? "#FFFFFF" : pciMode ? "#FFFFFF" : "#3B82F6",
+      strokeColor: isSource ? "#78350F" : shouldHighlight || selected ? "#FFFFFF" : pciMode ? "#FFFFFF" : "#3B82F6",
       strokeWeight: isSource ? 4 : 2,
     };
   }, [siteHasWorstCell, siteHasWorstSite, siteHasSelectedPci, selectedPci, selectedPciSiteId, showPredictions, showAlarms, predictionBySite, getWorstAlarmSeverity, siteMarkerScale]);
@@ -3269,20 +3306,30 @@ export default function MapPage() {
     const alarmSeverity = showAlarms ? getWorstAlarmSeverity(site) : "NORMAL";
     const hasAlarm = severityOrder[alarmSeverity] > 0;
     const pciMode = Boolean(selectedPci);
+    const isSource = selectedPci && normalizeKey(site?.SITEID) === normalizeKey(selectedPciSiteId);
 
     if (hasAlarm) return hexToRgba(severityMarkerColors[alarmSeverity], 255);
+    if (isSource) return hexToRgba("#FACC15", 255);
     if (hasSelectedPci) return hexToRgba("#DC2626", 255);
     if (hasWorstSite || hasWorst) return hexToRgba("#EA580C", 255);
     if (hasPrediction) return hexToRgba("#7C3AED", 255);
     if (selected) return hexToRgba("#2563EB", 255);
     if (pciMode) return hexToRgba("#16A34A", 245);
     return hexToRgba(getSiteBaseColor(site), 245);
-  }, [siteHasSelectedPci, siteHasWorstCell, siteHasWorstSite, showPredictions, showAlarms, predictionBySite, getWorstAlarmSeverity, selectedPci]);
+  }, [siteHasSelectedPci, siteHasWorstCell, siteHasWorstSite, showPredictions, showAlarms, predictionBySite, getWorstAlarmSeverity, selectedPci, selectedPciSiteId]);
 
   const getCellOverlayColors = useCallback((cell, layer, sector) => {
     const baseColors = getColorBySector(sector, layer);
     const isWorstCell = showWorstSites && worstCellLookup.has(normalizeKey(cell.Cell_Name));
     const isSamePci = selectedPci && normalizePci(cell.PCI) === normalizePci(selectedPci);
+    const isSourcePciCell =
+      isSamePci &&
+      selectedPciSiteId &&
+      normalizeKey(cell.SITEID) === normalizeKey(selectedPciSiteId);
+
+    if (isSourcePciCell) {
+      return { ...baseColors, fill: "#FACC15", stroke: "#78350F", light: "#FEF3C7", opacity: 0.86 };
+    }
 
     if (isSamePci) {
       return { ...baseColors, fill: "#DC2626", stroke: "#7F1D1D", light: "#FEE2E2", opacity: 0.78 };
@@ -3297,7 +3344,7 @@ export default function MapPage() {
     }
 
     return baseColors;
-  }, [getColorBySector, showWorstSites, worstCellLookup, selectedPci]);
+  }, [getColorBySector, showWorstSites, worstCellLookup, selectedPci, selectedPciSiteId]);
 
   // Render site markers
   useEffect(() => {
@@ -3327,20 +3374,17 @@ export default function MapPage() {
 
         marker.addListener("mouseover", () => {
           marker.setIcon(getSiteMarkerIcon(site, true));
+          if (marker.tooltip) {
+            marker.tooltip.close();
+          }
 
           const tooltip = new window.google.maps.InfoWindow({
-            content: `
-              <div style="padding: 8px 12px; font-family: -apple-system, system-ui; background: white; border-radius: 8px; font-weight: 600; font-size: 13px;">
-                <div style="color: #1F2937; margin-bottom: 4px;">${site.Site_Name}</div>
-                <div style="color: #6B7280; font-size: 11px; font-weight: 500;">
-                  Site ID: ${site.SITEID} • ${site.cells.length} cells
-                </div>
-              </div>
-            `,
+            content: createSiteInfoWindow(site),
             position: { lat: site.lat, lng: site.lon },
             pixelOffset: new window.google.maps.Size(0, -20),
           });
           marker.tooltip = tooltip;
+          miniTooltipRef.current = tooltip;
           tooltip.open(map);
         });
 
@@ -3487,7 +3531,6 @@ export default function MapPage() {
         if (object) handleSiteMarkerClick(object);
       },
       onHover: ({ object, coordinate }) => {
-        if (!infoWindowRef.current || infoWindowRef.current.getMap()) return;
         if (!object) {
           if (miniTooltipRef.current) {
             miniTooltipRef.current.close();
@@ -3500,17 +3543,7 @@ export default function MapPage() {
             pixelOffset: new window.google.maps.Size(0, -16),
           });
         }
-        const siteLabels = getSiteMapLabel(object);
-        miniTooltipRef.current.setContent(`
-          <div style="padding: 10px 12px; font-family: -apple-system, system-ui; background: white; border-radius: 10px; font-weight: 700; font-size: 13px; min-width: 220px;">
-            <div style="color: #111827;">${object.Site_Name || object.SITEID}</div>
-            <div style="margin-top: 4px; color: #6B7280; font-size: 11px; font-weight: 600;">Site ID: ${object.SITEID} - ${object.cells?.length || 0} cells</div>
-            <div style="margin-top: 8px; display: grid; gap: 5px; color: #334155; font-size: 11px; font-weight: 600;">
-              <div><span style="color:#64748B;">Tech:</span> ${siteLabels.techLabel}</div>
-              <div><span style="color:#64748B;">Band:</span> ${siteLabels.bandLabel}</div>
-            </div>
-          </div>
-        `);
+        miniTooltipRef.current.setContent(createSiteInfoWindow(object));
         miniTooltipRef.current.setPosition({ lat: coordinate[1], lng: coordinate[0] });
         miniTooltipRef.current.open(map);
       },
@@ -3568,7 +3601,6 @@ export default function MapPage() {
         }
       },
       onHover: ({ object, coordinate }) => {
-        if (!infoWindowRef.current || infoWindowRef.current.getMap()) return;
         if (!object) {
           if (miniTooltipRef.current) {
             miniTooltipRef.current.close();
@@ -3576,19 +3608,12 @@ export default function MapPage() {
           }
           return;
         }
-        const layer = getCellLayer(object);
-        const sector = getCellSector(object);
-        const colors = getCellOverlayColors(object, layer, sector);
         if (!miniTooltipRef.current) {
           miniTooltipRef.current = new window.google.maps.InfoWindow({
             pixelOffset: new window.google.maps.Size(0, -12),
           });
         }
-        miniTooltipRef.current.setContent(`
-          <div style="padding: 6px 12px; font-family: -apple-system, system-ui; background: white; color: ${colors.stroke}; border-radius: 8px; font-weight: 700; font-size: 12px; border: 2px solid ${colors.fill}; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
-            ${object.Cell_Name} <span style="color: #9CA3AF;">-</span> ${getCellBandLabel(object)}
-          </div>
-        `);
+        miniTooltipRef.current.setContent(createCellInfoWindow(object));
         miniTooltipRef.current.setPosition({ lat: coordinate[1], lng: coordinate[0] });
         miniTooltipRef.current.open(map);
       },
@@ -3919,9 +3944,8 @@ export default function MapPage() {
 
         // MODIFIED: Hover effect - close mini tooltip if info window is open
         polygon.addListener("mouseover", () => {
-          // Don't show mini tooltip if the main info window is open
-          if (infoWindowRef.current && infoWindowRef.current.getMap()) {
-            return;
+          if (polygon.miniTooltip) {
+            polygon.miniTooltip.close();
           }
 
           polygon.setOptions({
@@ -3931,11 +3955,7 @@ export default function MapPage() {
           });
 
           const tooltip = new window.google.maps.InfoWindow({
-            content: `
-              <div style="padding: 6px 12px; font-family: -apple-system, system-ui; background: white; color: ${colors.stroke}; border-radius: 8px; font-weight: 600; font-size: 12px; border: 2px solid ${colors.fill}; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
-                ${cell.Cell_Name} <span style="color: #9CA3AF;">•</span> ${cell.AZIMUTH}°
-              </div>
-            `,
+            content: createCellInfoWindow(cell),
             position: vertices[0],
             pixelOffset: new window.google.maps.Size(0, -10),
           });
@@ -3972,63 +3992,10 @@ export default function MapPage() {
 
   useEffect(() => {
     pciMarkersRef.current.forEach((marker) => marker.setMap(null));
-    alarmMarkersRef.current.forEach((marker) => marker.setMap(null));
     pciMarkersRef.current.clear();
-    alarmMarkersRef.current.clear();
-
-    if (!map || !window.google || !selectedPci) return;
-
-    const matches = [];
-    filteredSites.forEach((site) => {
-      site.cells
-        .filter((cell) => normalizePci(cell.PCI) === normalizePci(selectedPci))
-        .forEach((cell) => matches.push({ site, cell }));
-    });
-
-    const coordinateGroups = matches.reduce((groups, match) => {
-      const key = `${Number(match.cell.lat).toFixed(6)},${Number(match.cell.lon).toFixed(6)}`;
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key).push(match);
-      return groups;
-    }, new Map());
-
-    coordinateGroups.forEach((group) => {
-      group.forEach(({ site, cell }, index) => {
-        const hasOverlap = group.length > 1;
-        const angle = (360 / Math.max(group.length, 1)) * index;
-        const markerPosition = hasOverlap
-          ? destinationPoint(cell.lat, cell.lon, angle, 28)
-          : { lat: cell.lat, lng: cell.lon };
-        const markerKey = `${cell.Cell_ID || cell.Cell_Name}-${markerPosition.lat}-${markerPosition.lng}`;
-        const marker = new window.google.maps.Marker({
-          position: markerPosition,
-          map,
-          icon: {
-            path: window.google.maps.SymbolPath.CIRCLE,
-            scale: 6,
-            fillColor: "#DC2626",
-            fillOpacity: 1,
-            strokeColor: "#FFFFFF",
-            strokeWeight: 2,
-          },
-          title: `${cell.Cell_Name} - PCI ${cell.PCI}`,
-          zIndex: 50000,
-        });
-
-        marker.addListener("click", () => {
-          setSelectedCell(cell);
-          setSelectedSite(site);
-          setSelectedPciSiteId(String(site.SITEID || cell.SITEID || ""));
-          if (map) {
-            map.panTo(markerPosition);
-            map.setZoom(Math.max(zoomLevel, 15));
-          }
-        });
-
-        pciMarkersRef.current.set(markerKey, marker);
-      });
-    });
-  }, [map, filteredSites, selectedPci, zoomLevel, destinationPoint]);
+    // Extra offset PCI circle markers removed to keep map clean and prevent overlapping circle clutter.
+    // PCI highlighting is handled cleanly directly on the sector polygons.
+  }, [map, filteredSites, selectedPci, selectedPciSiteId]);
 
   useEffect(() => {
     alarmMarkersRef.current.forEach((marker) => marker.setMap(null));
@@ -4291,16 +4258,23 @@ export default function MapPage() {
     }
   }, [handleSiteMarkerClick, uniqueSites]);
 
-  if (loading) {
+  if (loading && !selectedSiteFileId && siteUploads.length === 0) {
     return (
-      <div className="h-screen w-full flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-50">
-        <div className="text-center">
-          <Loader2 className="w-16 h-16 text-blue-500 animate-spin mx-auto mb-4" />
-          <p className="text-gray-800 text-lg font-semibold">
+      <div className="h-screen w-full flex items-center justify-center bg-slate-950 text-white">
+        <div className="relative text-center p-8 rounded-3xl border border-slate-800 bg-slate-900/90 shadow-2xl backdrop-blur-xl max-w-md">
+          <div className="relative mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-600 shadow-xl shadow-blue-500/20">
+            <Radio className="h-10 w-10 text-white" />
+            <span className="absolute -right-1 -top-1 flex h-4 w-4">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400 opacity-75"></span>
+              <span className="relative inline-flex h-4 w-4 rounded-full bg-blue-500 border-2 border-slate-950"></span>
+            </span>
+          </div>
+          <Loader2 className="w-8 h-8 text-blue-400 animate-spin mx-auto mb-3" />
+          <h2 className="text-xl font-black tracking-tight text-white">
             Loading Network Data...
-          </p>
-          <p className="text-gray-500 text-sm mt-2">
-            Fetching cell tower information
+          </h2>
+          <p className="text-slate-400 text-xs mt-2 leading-relaxed">
+            Fetching cell tower telemetry & Spatial coverage parameters
           </p>
         </div>
       </div>
@@ -4308,7 +4282,7 @@ export default function MapPage() {
   }
 
   return (
-    <div className="h-screen w-full flex flex-col overflow-hidden bg-gray-50">
+    <div className="h-screen w-full flex flex-col overflow-hidden bg-slate-950 text-slate-100">
       <MapHeader
         sidebarOpen={sidebarOpen}
         drawerMode={drawerMode}
@@ -4334,59 +4308,60 @@ export default function MapPage() {
         {/* Sidebar */}
         <div
           className={`${sidebarOpen ? "translate-x-0" : "-translate-x-full pointer-events-none"
-            } absolute bottom-0 left-0 top-0 z-20 w-[420px] max-w-[92vw] transition-transform duration-300 ease-in-out bg-slate-950 shadow-2xl overflow-hidden flex flex-col border-r border-slate-800`}
+            } absolute bottom-0 left-0 top-0 z-20 w-[420px] max-w-[92vw] transition-transform duration-300 ease-in-out bg-slate-950/95 backdrop-blur-xl shadow-2xl overflow-hidden flex flex-col border-r border-slate-800/80`}
         >
           {/* Sidebar Header */}
-          <div className="bg-slate-950 p-4 text-white">
+          <div className="bg-slate-950 p-4 text-white border-b border-slate-800/80">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-blue-600 rounded-lg">
-                  <Radio className="w-6 h-6" />
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 shadow-md shadow-blue-500/20">
+                  <Radio className="w-5 h-5 text-white" />
                 </div>
                 <div>
-                  <h1 className="text-xl font-bold">{drawerMode === "filter" ? "Filter" : "Analytics"}</h1>
+                  <h1 className="text-lg font-black tracking-tight text-white">{drawerMode === "filter" ? "Network Control & Filter" : "Network Analytics"}</h1>
                   <p className="text-slate-400 text-xs">
-                    {drawerMode === "filter" ? "Data layer and site selection" : "KPI, prediction, alarm, and site insights"}
+                    {drawerMode === "filter" ? "Data layer configuration & spatial filters" : "KPI, prediction, alarm, and site insights"}
                   </p>
                 </div>
               </div>
               <button
                 onClick={() => setSidebarOpen(false)}
-                className="p-2 hover:bg-slate-800 rounded-lg transition-colors"
+                className="p-2 hover:bg-slate-800 rounded-xl transition-colors text-slate-400 hover:text-white border border-slate-800"
+                title="Close panel"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4.5 h-4.5" />
               </button>
             </div>
 
             {/* Stats */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-lg bg-slate-800 p-3">
-                <div className="mb-1 flex items-center gap-2">
-                  <Building2 className="h-4 w-4 text-blue-300" />
-                  <span className="text-xs font-medium text-slate-300">Sites</span>
+            <div className="grid grid-cols-2 gap-2.5">
+              <div className="rounded-xl border border-slate-800/80 bg-slate-900/80 p-3 shadow-inner">
+                <div className="mb-1 flex items-center gap-1.5">
+                  <Building2 className="h-3.5 w-3.5 text-blue-400" />
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Sites</span>
                 </div>
-                <p className="text-2xl font-bold">{filteredSites.length}</p>
+                <p className="text-xl font-black text-white">{filteredSites.length}</p>
               </div>
-              <div className="rounded-lg bg-slate-800 p-3">
-                <div className="mb-1 flex items-center gap-2">
-                  <Signal className="h-4 w-4 text-blue-300" />
-                  <span className="text-xs font-medium text-slate-300">Cells</span>
+              <div className="rounded-xl border border-slate-800/80 bg-slate-900/80 p-3 shadow-inner">
+                <div className="mb-1 flex items-center gap-1.5">
+                  <Signal className="h-3.5 w-3.5 text-indigo-400" />
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Cells</span>
                 </div>
-                <p className="text-2xl font-bold">{filteredCellCount}</p>
+                <p className="text-xl font-black text-white">{filteredCellCount}</p>
               </div>
-              <div className="rounded-lg bg-slate-800 p-3">
-                <div className="mb-1 flex items-center gap-2">
-                  <MapPin className="h-4 w-4 text-blue-300" />
-                  <span className="text-xs font-medium text-slate-300">Plotted</span>
+              <div className="rounded-xl border border-slate-800/80 bg-slate-900/80 p-3 shadow-inner">
+                <div className="mb-1 flex items-center gap-1.5">
+                  <MapPin className="h-3.5 w-3.5 text-emerald-400" />
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Plotted</span>
                 </div>
-                <p className="text-2xl font-bold">{filteredCellCount}</p>
+                <p className="text-xl font-black text-emerald-400">{filteredCellCount}</p>
               </div>
-              <div className="rounded-lg bg-slate-800 p-3">
-                <div className="mb-1 flex items-center gap-2">
-                  <Activity className="h-4 w-4 text-blue-300" />
-                  <span className="text-xs font-medium text-slate-300">No Lat/Lon</span>
+              <div className="rounded-xl border border-slate-800/80 bg-slate-900/80 p-3 shadow-inner">
+                <div className="mb-1 flex items-center gap-1.5">
+                  <Activity className="h-3.5 w-3.5 text-amber-400" />
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">No Lat/Lon</span>
                 </div>
-                <p className="text-2xl font-bold">{missingCoordinateRows}</p>
+                <p className="text-xl font-black text-amber-400">{missingCoordinateRows}</p>
               </div>
             </div>
           </div>
@@ -4935,66 +4910,65 @@ export default function MapPage() {
             {activeMapPanel === "overview" && (
             <>
             <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <div className="text-xs font-bold uppercase text-slate-500">Sites</div>
-                <div className="mt-1 text-2xl font-black text-slate-900">{formatNumber(siteSummary?.siteCount || uniqueSites.length)}</div>
+              <div className="rounded-2xl border border-slate-800/80 bg-slate-900/80 p-3.5 shadow-md">
+                <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Sites</div>
+                <div className="mt-1 text-2xl font-black text-white">{formatNumber(siteSummary?.siteCount || uniqueSites.length)}</div>
               </div>
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <div className="text-xs font-bold uppercase text-slate-500">Cells</div>
-                <div className="mt-1 text-2xl font-black text-slate-900">{formatNumber(siteAnalyticsTotals.cells || mapData.length)}</div>
+              <div className="rounded-2xl border border-slate-800/80 bg-slate-900/80 p-3.5 shadow-md">
+                <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Cells</div>
+                <div className="mt-1 text-2xl font-black text-white">{formatNumber(siteAnalyticsTotals.cells || mapData.length)}</div>
               </div>
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <div className="text-xs font-bold uppercase text-slate-500">Bands</div>
-                <div className="mt-1 text-2xl font-black text-slate-900">{formatNumber(siteAnalyticsTotals.bands.size)}</div>
+              <div className="rounded-2xl border border-slate-800/80 bg-slate-900/80 p-3.5 shadow-md">
+                <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Bands</div>
+                <div className="mt-1 text-2xl font-black text-white">{formatNumber(siteAnalyticsTotals.bands.size)}</div>
               </div>
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <div className="text-xs font-bold uppercase text-slate-500">Critical</div>
-                <div className="mt-1 text-2xl font-black text-red-700">{formatNumber(statusCounts.CRITICAL)}</div>
+              <div className="rounded-2xl border border-slate-800/80 bg-slate-900/80 p-3.5 shadow-md">
+                <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Critical</div>
+                <div className="mt-1 text-2xl font-black text-red-400">{formatNumber(statusCounts.CRITICAL)}</div>
               </div>
             </div>
 
-            <div className="rounded-xl border border-slate-200 bg-white p-3">
-              <div className="mb-3 text-sm font-black text-slate-900">Map Analytics</div>
+            <div className="rounded-2xl border border-slate-800/80 bg-slate-900/60 p-4 shadow-lg">
+              <div className="mb-3 text-xs font-black uppercase tracking-wider text-slate-300">Map Analytics Overview</div>
               <div className="grid grid-cols-2 gap-3">
-                <div className="rounded-lg bg-blue-50 p-3">
-                  <div className="flex items-center gap-2 text-xs font-bold uppercase text-blue-600">
+                <div className="rounded-xl border border-blue-500/30 bg-blue-950/30 p-3">
+                  <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-blue-400">
                     <Activity className="h-4 w-4" />
                     Coverage
                   </div>
-                  <div className="mt-1 text-2xl font-black text-blue-700">
+                  <div className="mt-1.5 text-2xl font-black text-blue-300">
                     {formatNumber(showCells ? deckCells.length : 0)}
                   </div>
-                  <div className="text-[11px] text-slate-500">
+                  <div className="text-[11px] text-slate-400 mt-0.5">
                     {showCells ? "Cells visible" : "Cells hidden"} @ Zoom {zoomLevel}
                   </div>
                 </div>
 
-                <div className="rounded-lg bg-purple-50 p-3">
-                  <div className="flex items-center gap-2 text-xs font-bold uppercase text-purple-600">
+                <div className="rounded-xl border border-purple-500/30 bg-purple-950/30 p-3">
+                  <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-purple-400">
                     <Sparkles className="h-4 w-4" />
                     Predictions
                   </div>
-                  <div className="mt-1 text-2xl font-black text-purple-700">
+                  <div className="mt-1.5 text-2xl font-black text-purple-300">
                     {formatNumber(showPredictions ? predictionMarkerCount : 0)}
                   </div>
-                  <div className="text-[11px] text-slate-500">
+                  <div className="text-[11px] text-slate-400 mt-0.5">
                     {formatNumber(displayPredictions.length)} recommendation(s)
                   </div>
                 </div>
               </div>
-
             </div>
 
             {selectedPci && (
-              <div className="rounded-xl border border-red-200 bg-red-50 p-3">
+              <div className="rounded-2xl border border-red-500/30 bg-red-950/30 p-4 shadow-lg">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <div className="text-xs font-bold uppercase text-red-600">PCI Source / Neighbours</div>
-                    <div className="text-lg font-black text-red-900">PCI {selectedPci}</div>
-                    <div className="text-xs text-slate-500">
-                      Source {selectedPciSiteId || "-"} - {selectedPciCount} matching cell(s)
+                    <div className="text-[11px] font-bold uppercase tracking-wider text-red-400">PCI Source / Neighbours</div>
+                    <div className="text-xl font-black text-white">PCI {selectedPci}</div>
+                    <div className="text-xs text-slate-400 mt-0.5">
+                      Source {selectedPciSiteId || "-"} • {selectedPciCount} matching cell(s)
                     </div>
-                    <div className="text-xs text-slate-500">
+                    <div className="text-xs text-slate-400">
                       {pciNeighbours.length} neighbour site(s) with same PCI
                     </div>
                   </div>
@@ -5004,7 +4978,7 @@ export default function MapPage() {
                       setSelectedPci("");
                       setSelectedPciSiteId("");
                     }}
-                    className="rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-50"
+                    className="rounded-xl border border-red-500/40 bg-red-900/40 px-3 py-1.5 text-xs font-bold text-red-300 hover:bg-red-900/60"
                   >
                     Clear
                   </button>
@@ -5016,17 +4990,17 @@ export default function MapPage() {
                         key={site.SITEID}
                         type="button"
                         onClick={() => handleSiteMarkerClick(site)}
-                        className="w-full rounded-lg border border-red-100 bg-white px-3 py-2 text-left hover:bg-red-100"
+                        className="w-full rounded-xl border border-red-500/20 bg-slate-900/80 px-3 py-2 text-left hover:border-red-500/40 hover:bg-slate-900"
                       >
                         <div className="flex items-center justify-between gap-2">
-                          <span className="truncate text-xs font-bold text-red-900">
+                          <span className="truncate text-xs font-bold text-red-300">
                             Neighbour {index + 1}: {site.SITEID}
                           </span>
-                          <span className="text-xs font-bold text-red-700">
+                          <span className="text-xs font-bold text-red-400">
                             {site.distanceKm == null ? "-" : `${site.distanceKm.toFixed(2)} km`}
                           </span>
                         </div>
-                        <div className="mt-1 text-[11px] text-slate-500">
+                        <div className="mt-1 text-[11px] text-slate-400">
                           {site.matchingPciCells.length} same-PCI cell(s)
                         </div>
                       </button>
@@ -5037,9 +5011,9 @@ export default function MapPage() {
             )}
 
             <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-xl border border-slate-200 bg-white p-3">
-                <h3 className="mb-3 flex items-center gap-2 text-xs font-bold uppercase text-slate-600">
-                  <MapPin className="h-4 w-4" />
+              <div className="rounded-2xl border border-slate-800/80 bg-slate-900/60 p-3.5 shadow-md">
+                <h3 className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-300">
+                  <MapPin className="h-4 w-4 text-blue-400" />
                   Site Type
                 </h3>
                 <div className="space-y-2">
@@ -5051,18 +5025,18 @@ export default function MapPage() {
                   ].map(([label, color]) => (
                     <div key={label} className="flex items-center gap-2">
                       <div
-                        className="h-4 w-4 rounded-full border-2 border-white shadow-sm"
+                        className="h-3.5 w-3.5 rounded-full border border-slate-950 shadow-sm"
                         style={{ backgroundColor: color }}
                       />
-                      <span className="text-xs font-medium text-slate-600">{label}</span>
+                      <span className="text-xs font-semibold text-slate-300">{label}</span>
                     </div>
                   ))}
                 </div>
               </div>
 
-              <div className="rounded-xl border border-slate-200 bg-white p-3">
-                <h3 className="mb-3 flex items-center gap-2 text-xs font-bold uppercase text-slate-600">
-                  <Layers className="h-4 w-4" />
+              <div className="rounded-2xl border border-slate-800/80 bg-slate-900/60 p-3.5 shadow-md">
+                <h3 className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-300">
+                  <Layers className="h-4 w-4 text-purple-400" />
                   Sectors
                 </h3>
                 <div className="grid grid-cols-2 gap-2">
@@ -5071,13 +5045,13 @@ export default function MapPage() {
                     return (
                       <div key={sector} className="flex items-center gap-2">
                         <div
-                          className="h-4 w-4 flex-shrink-0 rounded shadow-sm"
+                          className="h-3.5 w-3.5 flex-shrink-0 rounded shadow-sm"
                           style={{
                             backgroundColor: colors.fill,
-                            border: `2px solid ${colors.stroke}`,
+                            border: `1.5px solid ${colors.stroke}`,
                           }}
                         />
-                        <span className="text-xs font-medium text-slate-600">{sector}</span>
+                        <span className="text-xs font-semibold text-slate-300">{sector}</span>
                       </div>
                     );
                   })}
@@ -5088,8 +5062,8 @@ export default function MapPage() {
             )}
 
             {activeMapPanel === "worstCells" && (
-              <div className="rounded-xl border border-red-100 bg-red-50 p-3">
-                <div className="mb-3 rounded-lg bg-white p-2">
+              <div className="rounded-2xl border border-red-500/30 bg-slate-900/60 p-4 shadow-lg space-y-3">
+                <div className="rounded-xl border border-slate-800 bg-slate-950 p-2.5">
                   <MapKpiSelector
                     uploads={uploads}
                     selectedFileId={selectedFileId}
@@ -5101,9 +5075,9 @@ export default function MapPage() {
                     compact
                   />
                 </div>
-                <div className="mb-3 flex items-center justify-between">
-                  <div className="text-sm font-black text-red-900">Worst Cells</div>
-                  <div className="rounded-full bg-white px-2 py-1 text-xs font-black text-red-700">{formatNumber(worstCells.length)}</div>
+                <div className="flex items-center justify-between">
+                  <div className="text-xs font-black uppercase tracking-wider text-red-400">Worst Cells Rankings</div>
+                  <div className="rounded-full border border-red-500/30 bg-red-950/40 px-2.5 py-0.5 text-xs font-black text-red-300">{formatNumber(worstCells.length)}</div>
                 </div>
                 <div className="max-h-[52vh] space-y-2 overflow-y-auto pr-1">
                   {worstCells.slice(0, 18).map((row) => (
@@ -5111,26 +5085,26 @@ export default function MapPage() {
                       key={`right-worst-${row.rank}-${row.cellName || row.cell}`}
                       type="button"
                       onClick={() => handleWorstCellClick(row)}
-                      className="w-full rounded-lg border border-red-100 bg-white p-3 text-left hover:border-red-300 hover:bg-red-50"
+                      className="w-full rounded-xl border border-red-500/20 bg-slate-950 p-3 text-left transition-all hover:border-red-500/50 hover:bg-slate-900"
                     >
                       <div className="flex items-center justify-between gap-2">
-                        <span className="truncate text-xs font-black text-slate-900">#{row.rank} {row.cellName || row.cell || "Unknown Cell"}</span>
-                        <span className="text-xs font-black text-red-700">{row.averageValue ?? "-"}</span>
+                        <span className="truncate text-xs font-black text-white">#{row.rank} {row.cellName || row.cell || "Unknown Cell"}</span>
+                        <span className="text-xs font-black text-red-400">{row.averageValue ?? "-"}</span>
                       </div>
-                      <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-slate-500">
+                      <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-slate-400">
                         <span className="truncate">{row.site || "Unknown Site"}</span>
-                        <span>{row.severity || "NORMAL"}</span>
+                        <span className="rounded-full bg-red-950/60 px-2 py-0.5 text-[10px] font-bold text-red-300 border border-red-500/30">{row.severity || "NORMAL"}</span>
                       </div>
                     </button>
                   ))}
-                  {worstCells.length === 0 && <p className="text-sm text-slate-500">Select a KPI file and metric to load worst cells.</p>}
+                  {worstCells.length === 0 && <p className="text-sm text-slate-400">Select a KPI file and metric to load worst cells.</p>}
                 </div>
               </div>
             )}
 
             {activeMapPanel === "predictions" && (
-              <div className="rounded-xl border border-purple-100 bg-purple-50 p-3">
-                <div className="mb-3 rounded-lg bg-white p-2">
+              <div className="rounded-2xl border border-purple-500/30 bg-slate-900/60 p-4 shadow-lg space-y-3">
+                <div className="rounded-xl border border-slate-800 bg-slate-950 p-2.5">
                   <MapKpiSelector
                     uploads={uploads}
                     selectedFileId={selectedFileId}
@@ -5141,27 +5115,27 @@ export default function MapPage() {
                     compact
                   />
                 </div>
-                <div className="mb-3 grid grid-cols-2 gap-2 text-center">
-                  <div className="rounded-lg bg-white p-3">
-                    <div className="text-[10px] font-black uppercase text-slate-500">Load Balance</div>
-                    <div className="text-lg font-black text-blue-700">{formatNumber(activePredictionSummary?.actionCounts?.LOAD_BALANCE)}</div>
+                <div className="grid grid-cols-2 gap-2 text-center">
+                  <div className="rounded-xl border border-slate-800 bg-slate-950 p-3">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Load Balance</div>
+                    <div className="text-lg font-black text-blue-400">{formatNumber(activePredictionSummary?.actionCounts?.LOAD_BALANCE)}</div>
                   </div>
-                  <div className="rounded-lg bg-white p-3">
-                    <div className="text-[10px] font-black uppercase text-slate-500">Quality</div>
-                    <div className="text-lg font-black text-red-700">{formatNumber(activePredictionSummary?.actionCounts?.QUALITY_CHECK)}</div>
+                  <div className="rounded-xl border border-slate-800 bg-slate-950 p-3">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Quality</div>
+                    <div className="text-lg font-black text-red-400">{formatNumber(activePredictionSummary?.actionCounts?.QUALITY_CHECK)}</div>
                   </div>
-                  <div className="rounded-lg bg-white p-3">
-                    <div className="text-[10px] font-black uppercase text-slate-500">Capacity</div>
-                    <div className="text-lg font-black text-purple-700">{formatNumber(activePredictionSummary?.actionCounts?.CAPACITY_REVIEW)}</div>
+                  <div className="rounded-xl border border-slate-800 bg-slate-950 p-3">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Capacity</div>
+                    <div className="text-lg font-black text-purple-400">{formatNumber(activePredictionSummary?.actionCounts?.CAPACITY_REVIEW)}</div>
                   </div>
-                  <div className="rounded-lg bg-white p-3">
-                    <div className="text-[10px] font-black uppercase text-slate-500">Coverage</div>
-                    <div className="text-lg font-black text-orange-700">{formatNumber(activePredictionSummary?.actionCounts?.COVERAGE_CHECK)}</div>
+                  <div className="rounded-xl border border-slate-800 bg-slate-950 p-3">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Coverage</div>
+                    <div className="text-lg font-black text-amber-400">{formatNumber(activePredictionSummary?.actionCounts?.COVERAGE_CHECK)}</div>
                   </div>
                 </div>
                 {(lbMessage || lbResult) && (
-                  <div className={`mb-3 rounded-lg px-3 py-2 text-xs font-bold ${
-                    lbResult ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"
+                  <div className={`rounded-xl border px-3 py-2 text-xs font-bold ${
+                    lbResult ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300" : "border-red-500/30 bg-red-500/10 text-red-300"
                   }`}>
                     {lbMessage}
                     {lbResult && ` Rows: ${formatNumber(lbResult.summary?.rows)} | Unbalanced: ${formatNumber(lbResult.summary?.unbalanced_count)}`}
@@ -5182,49 +5156,50 @@ export default function MapPage() {
                         );
                         if (mapSite) handleSiteMarkerClick(mapSite);
                       }}
-                      className="w-full rounded-lg border border-purple-100 bg-white p-3 text-left hover:border-purple-300 hover:bg-purple-50"
+                      className="w-full rounded-xl border border-purple-500/20 bg-slate-950 p-3 text-left transition-all hover:border-purple-500/50 hover:bg-slate-900"
                     >
                       <div className="flex items-center justify-between gap-2">
-                        <span className="truncate text-xs font-black text-slate-900">{item.site || item.cellName || "Prediction"}</span>
+                        <span className="truncate text-xs font-black text-white">{item.site || item.cellName || "Prediction"}</span>
                         <span className={`rounded-full border px-2 py-0.5 text-[10px] font-black ${actionClasses[item.actionCode] || actionClasses.OBSERVE}`}>
                           {String(item.actionCode || "OBSERVE").replaceAll("_", " ")}
                         </span>
                       </div>
-                      <div className="mt-1">
+                      <div className="mt-1.5 flex items-center justify-between gap-2">
                         <span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${
                           String(item.balanceStatus || item.bandUnbalanced || "").toLowerCase().includes("not")
-                            ? "bg-red-50 text-red-700"
-                            : "bg-emerald-50 text-emerald-700"
+                            ? "border border-red-500/30 bg-red-950/60 text-red-300"
+                            : "border border-emerald-500/30 bg-emerald-950/60 text-emerald-300"
                         }`}>
                           {item.balanceStatus || item.bandUnbalanced || "Balanced"}
                         </span>
+                        <span className="text-[10px] text-slate-400 font-bold">{item.severity || "NORMAL"}</span>
                       </div>
-                      <div className="mt-1 truncate text-[11px] text-slate-500">{item.reason || item.action || "Review site performance."}</div>
+                      <div className="mt-1.5 truncate text-[11px] text-slate-400">{item.reason || item.action || "Review site performance."}</div>
                     </button>
                   ))}
-                  {asArray(displayPredictions).length === 0 && <p className="text-sm text-slate-500">No prediction recommendations found for the selected KPI file.</p>}
+                  {asArray(displayPredictions).length === 0 && <p className="text-sm text-slate-400">No prediction recommendations found for the selected KPI file.</p>}
                 </div>
               </div>
             )}
 
             {activeMapPanel === "alarms" && (
-              <div className="rounded-xl border border-red-100 bg-red-50 p-3">
-                <div className="mb-3 text-sm font-black text-red-900">Alarms</div>
+              <div className="rounded-2xl border border-red-500/30 bg-slate-900/60 p-4 shadow-lg space-y-3">
+                <div className="text-xs font-black text-red-400 uppercase tracking-wider">Active Alarms</div>
                 <div className="max-h-[52vh] space-y-2 overflow-y-auto pr-1">
                   {asArray(alarms).slice(0, 18).map((alarm, index) => (
                     <button
                       key={`right-alarm-${alarm.id || index}`}
                       type="button"
-                      className="w-full rounded-lg border border-red-100 bg-white p-3 text-left hover:border-red-300 hover:bg-red-50"
+                      className="w-full rounded-xl border border-red-500/20 bg-slate-950 p-3 text-left transition-all hover:border-red-500/50 hover:bg-slate-900"
                     >
                       <div className="flex items-center justify-between gap-2">
-                        <span className="truncate text-xs font-black text-slate-900">{alarm.site || alarm.cellName || alarm.metricName || "Alarm"}</span>
-                        <span className="text-xs font-black text-red-700">{alarm.severity || "OPEN"}</span>
+                        <span className="truncate text-xs font-black text-white">{alarm.site || alarm.cellName || alarm.metricName || "Alarm"}</span>
+                        <span className="rounded-full border border-red-500/30 bg-red-950/60 px-2 py-0.5 text-[10px] font-black text-white">{alarm.severity || "OPEN"}</span>
                       </div>
-                      <div className="mt-1 truncate text-[11px] text-slate-500">{alarm.message || alarm.recommendation || alarm.metricName || "Alarm context"}</div>
+                      <div className="mt-1.5 truncate text-[11px] font-semibold text-white">{alarm.message || alarm.recommendation || alarm.metricName || "Alarm context"}</div>
                     </button>
                   ))}
-                  {asArray(alarms).length === 0 && <p className="text-sm text-slate-500">No open alarms found for the selected KPI file.</p>}
+                  {asArray(alarms).length === 0 && <p className="text-sm text-slate-400">No open alarms found for the selected KPI file.</p>}
                 </div>
               </div>
             )}
@@ -5255,6 +5230,10 @@ export default function MapPage() {
             alarmCounts={mapLayerLegendCounts.alarmCounts}
             predictionActionColors={predictionActionColors}
             severityMarkerColors={severityMarkerColors}
+            selectedPci={selectedPci}
+            sourcePciLabel={sourcePciLabel}
+            selectedPciCount={selectedPciCount}
+            pciNeighbourCount={pciNeighbours.length}
           />
 
           {/* Map controls moved into the Filter and Analytics panels. */}
@@ -5550,43 +5529,49 @@ export default function MapPage() {
             </div>
           )}
 
-          {/* Selected Cell Panel */}
+          {/* Selected Cell Panel HUD */}
           {selectedCell && (
-            <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 z-10 bg-white shadow-2xl rounded-2xl p-5 border border-gray-200 max-w-lg">
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex-1">
+            <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 z-20 w-[480px] max-w-[92vw] rounded-2xl border border-slate-800/90 bg-slate-950/95 p-5 text-white shadow-2xl backdrop-blur-xl ring-1 ring-white/10">
+              <div className="flex items-start justify-between mb-4 border-b border-slate-800/80 pb-3">
+                <div className="flex-1 min-w-0 pr-3">
                   <div className="flex items-center gap-2 mb-1">
-                    <Antenna className="w-5 h-5 text-blue-600" />
-                    <h3 className="font-bold text-gray-900 text-lg">
+                    <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-600/90 text-white shadow-md shadow-blue-500/20">
+                      <Antenna className="w-4 h-4" />
+                    </span>
+                    <h3 className="font-black text-white text-base truncate tracking-tight">
                       {selectedCell.Cell_Name}
                     </h3>
                   </div>
-                  <p className="text-sm text-gray-500 flex items-center gap-2">
-                    <Building2 className="w-3 h-3" />
-                    Site {selectedCell.SITEID} • Layer {getCellLayer(selectedCell)}
+                  <p className="text-xs text-slate-400 flex items-center gap-2">
+                    <Building2 className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                    <span className="truncate">Site <span className="font-bold text-slate-200">{selectedCell.SITEID}</span></span>
+                    <span className="text-slate-600">•</span>
+                    <span>Layer <span className="font-bold text-blue-400">{getCellLayer(selectedCell)}</span></span>
                   </p>
                 </div>
                 <button
                   onClick={() => setSelectedCell(null)}
-                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                  className="flex h-8 w-8 items-center justify-center rounded-xl border border-slate-800 bg-slate-900 text-slate-400 hover:border-slate-700 hover:bg-slate-800 hover:text-white transition-colors"
+                  title="Close cell details"
                 >
-                  <X className="w-5 h-5 text-gray-500" />
+                  <X className="w-4 h-4" />
                 </button>
               </div>
 
-              <div className="grid grid-cols-4 gap-3">
-                <div className="bg-blue-50 rounded-xl p-3 border border-blue-200">
-                  <Compass className="w-5 h-5 text-blue-600 mb-2" />
-                  <div className="text-xs text-blue-600 font-semibold mb-1">
+              <div className="grid grid-cols-4 gap-2.5">
+                <div className="bg-slate-900/90 rounded-xl p-3 border border-blue-500/30 text-center shadow-sm">
+                  <Compass className="w-4 h-4 text-blue-400 mx-auto mb-1.5" />
+                  <div className="text-[10px] text-blue-400 font-bold uppercase tracking-wider mb-0.5">
                     Azimuth
                   </div>
-                  <div className="text-xl font-black text-blue-900">
+                  <div className="text-lg font-black text-white">
                     {selectedCell.AZIMUTH}°
                   </div>
                 </div>
-                <div className="bg-violet-50 rounded-xl p-3 border border-violet-200">
-                  <Hash className="w-5 h-5 text-violet-600 mb-2" />
-                  <div className="text-xs text-violet-600 font-semibold mb-1">
+
+                <div className="bg-slate-900/90 rounded-xl p-3 border border-purple-500/30 text-center shadow-sm">
+                  <Hash className="w-4 h-4 text-purple-400 mx-auto mb-1.5" />
+                  <div className="text-[10px] text-purple-400 font-bold uppercase tracking-wider mb-0.5">
                     PCI
                   </div>
                   <button
@@ -5595,27 +5580,29 @@ export default function MapPage() {
                       setSelectedPci(String(selectedCell.PCI || ""));
                       setSelectedPciSiteId(String(selectedCell.SITEID || ""));
                     }}
-                    className="text-xl font-black text-violet-900 underline-offset-4 hover:underline"
+                    className="text-lg font-black text-purple-300 hover:text-purple-100 underline-offset-4 hover:underline"
                     title="Highlight all cells with this PCI"
                   >
                     {selectedCell.PCI}
                   </button>
                 </div>
-                <div className="bg-emerald-50 rounded-xl p-3 border border-emerald-200">
-                  <Waves className="w-5 h-5 text-emerald-600 mb-2" />
-                  <div className="text-xs text-emerald-600 font-semibold mb-1">
+
+                <div className="bg-slate-900/90 rounded-xl p-3 border border-emerald-500/30 text-center shadow-sm">
+                  <Waves className="w-4 h-4 text-emerald-400 mx-auto mb-1.5" />
+                  <div className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider mb-0.5">
                     Freq
                   </div>
-                  <div className="text-sm font-black text-emerald-900">
-                    {selectedCell.Downlink_Center_Frequency}
+                  <div className="text-xs font-black text-emerald-300 truncate">
+                    {selectedCell.Downlink_Center_Frequency || "-"}
                   </div>
                 </div>
-                <div className="bg-orange-50 rounded-xl p-3 border border-orange-200">
-                  <TrendingUp className="w-5 h-5 text-orange-600 mb-2" />
-                  <div className="text-xs text-orange-600 font-semibold mb-1">
+
+                <div className="bg-slate-900/90 rounded-xl p-3 border border-amber-500/30 text-center shadow-sm">
+                  <TrendingUp className="w-4 h-4 text-amber-400 mx-auto mb-1.5" />
+                  <div className="text-[10px] text-amber-400 font-bold uppercase tracking-wider mb-0.5">
                     Layer
                   </div>
-                  <div className="text-xl font-black text-orange-900">
+                  <div className="text-lg font-black text-amber-300">
                     {getCellLayer(selectedCell)}
                   </div>
                 </div>

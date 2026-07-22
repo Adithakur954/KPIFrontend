@@ -1,4 +1,4 @@
-import { AlertTriangle, Eye, EyeOff, Sparkles } from "lucide-react";
+import { AlertTriangle, Eye, EyeOff, FileText, Filter, Layers, Sparkles } from "lucide-react";
 import ToggleSwitch from "../../../components/common/ToggleSwitch";
 import LbPredictionControls from "./LbPredictionControls";
 import MapKpiSelector from "./MapKpiSelector";
@@ -42,11 +42,14 @@ export default function MapFilterPanel({
   onToggleAlarms,
 }) {
   return (
-    <div className="space-y-3 border-b border-slate-800 bg-slate-950 p-4">
+    <div className="space-y-4 border-b border-slate-800/80 bg-slate-950 p-4 text-slate-100">
       {(fetchError || mapDataCount === 0) && (
-        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3">
-          <div className="text-sm font-bold text-amber-100">Site data map status</div>
-          <div className="mt-1 text-xs leading-5 text-amber-200">
+        <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-3.5 shadow-md backdrop-blur-md">
+          <div className="flex items-center gap-2 text-sm font-bold text-amber-200">
+            <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400" />
+            <span>Site data map status</span>
+          </div>
+          <div className="mt-1.5 text-xs leading-5 text-amber-300/90">
             {fetchError ||
               (totalSiteRows > 0
                 ? `${totalSiteRows} site row(s) found, but ${missingCoordinateRows} row(s) do not have valid lat/lon values.`
@@ -55,54 +58,61 @@ export default function MapFilterPanel({
         </div>
       )}
 
-      <div>
-        <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-400">
-          Site Upload File
-        </label>
-        <select
-          value={selectedSiteFileId}
-          onChange={(event) => onSiteFileChange(event.target.value)}
-          className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-        >
-          <option value="">Select Site Data file</option>
-          {siteUploads.map((upload) => (
-            <option key={`site-upload-${upload.id}`} value={upload.id}>
-              #{upload.id} - {upload.fileName}
-            </option>
-          ))}
-        </select>
-        {siteUploads.length === 0 && (
-          <p className="mt-1 text-[11px] font-semibold text-amber-300">
-            No Site Data upload found. Upload Site Data first.
-          </p>
-        )}
-      </div>
-
-      <div className="rounded-xl border border-slate-800 bg-slate-900 p-3">
-        <div className="mb-3 text-xs font-black uppercase tracking-wide text-slate-400">
-          KPI File For Map Analysis
+      {/* Group 1: Data Sources */}
+      <div className="rounded-2xl border border-slate-800/80 bg-slate-900/60 p-4 shadow-lg backdrop-blur-md">
+        <div className="mb-3 flex items-center gap-2 text-xs font-black uppercase tracking-wider text-blue-400">
+          <FileText className="h-4 w-4" />
+          <span>Data Sources</span>
         </div>
-        <MapKpiSelector
-          uploads={uploads}
-          selectedFileId={selectedFileId}
-          onKpiFileChange={onKpiFileChange}
-          metrics={metrics}
-          selectedMetric={selectedMetric}
-          onMetricChange={onMetricChange}
-          showMetric
-          compact
-        />
+
+        <div className="space-y-3.5">
+          <div>
+            <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-400">
+              Site Upload File
+            </label>
+            <select
+              value={selectedSiteFileId}
+              onChange={(event) => onSiteFileChange(event.target.value)}
+              className="w-full rounded-xl border border-slate-700/80 bg-slate-900/90 px-3.5 py-2.5 text-sm font-semibold text-white outline-none transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+            >
+              <option value="" className="bg-slate-900 text-slate-400">Select Site Data file</option>
+              {siteUploads.map((upload) => (
+                <option key={`site-upload-${upload.id}`} value={upload.id} className="bg-slate-900 text-white">
+                  #{upload.id} - {upload.fileName}
+                </option>
+              ))}
+            </select>
+            {siteUploads.length === 0 && (
+              <p className="mt-1.5 text-[11px] font-semibold text-amber-400">
+                No Site Data upload found. Upload Site Data first.
+              </p>
+            )}
+          </div>
+
+          <MapKpiSelector
+            uploads={uploads}
+            selectedFileId={selectedFileId}
+            onKpiFileChange={onKpiFileChange}
+            metrics={metrics}
+            selectedMetric={selectedMetric}
+            onMetricChange={onMetricChange}
+            showMetric
+            compact
+          />
+        </div>
       </div>
 
-      <div className="rounded-xl border border-slate-800 bg-slate-900 p-3">
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <div className="text-xs font-black uppercase tracking-wide text-slate-400">
-            Site Data Filters
+      {/* Group 2: Site Data Filters */}
+      <div className="rounded-2xl border border-slate-800/80 bg-slate-900/60 p-4 shadow-lg backdrop-blur-md">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-indigo-400">
+            <Filter className="h-4 w-4" />
+            <span>Site Data Filters</span>
           </div>
           <button
             type="button"
             onClick={onClearDataFilters}
-            className="rounded-lg border border-slate-700 px-2 py-1 text-[11px] font-bold text-slate-300 hover:bg-slate-800"
+            className="rounded-lg border border-slate-700 bg-slate-800/90 px-2.5 py-1 text-[11px] font-bold text-slate-300 shadow-sm transition-all hover:bg-slate-700 hover:text-white"
           >
             Clear
           </button>
@@ -110,17 +120,17 @@ export default function MapFilterPanel({
 
         <div className="grid grid-cols-1 gap-3">
           <div>
-            <label className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-slate-500">
+            <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-slate-400">
               Technology
             </label>
             <select
               value={selectedTechnology}
               onChange={(event) => onTechnologyChange(event.target.value)}
-              className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-blue-500"
+              className="w-full rounded-xl border border-slate-700/80 bg-slate-950 px-3 py-2 text-sm font-semibold text-white outline-none focus:border-blue-500"
             >
-              <option value="">All technologies</option>
+              <option value="" className="bg-slate-900 text-slate-400">All technologies</option>
               {technologyOptions.map((technology) => (
-                <option key={technology} value={technology}>
+                <option key={technology} value={technology} className="bg-slate-900 text-white">
                   {technology}
                 </option>
               ))}
@@ -128,17 +138,17 @@ export default function MapFilterPanel({
           </div>
 
           <div>
-            <label className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-slate-500">
+            <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-slate-400">
               Band
             </label>
             <select
               value={selectedBand}
               onChange={(event) => onBandChange(event.target.value)}
-              className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-blue-500"
+              className="w-full rounded-xl border border-slate-700/80 bg-slate-950 px-3 py-2 text-sm font-semibold text-white outline-none focus:border-blue-500"
             >
-              <option value="">All bands</option>
+              <option value="" className="bg-slate-900 text-slate-400">All bands</option>
               {bandOptions.map((band) => (
-                <option key={band} value={band}>
+                <option key={band} value={band} className="bg-slate-900 text-white">
                   {band}
                 </option>
               ))}
@@ -146,7 +156,7 @@ export default function MapFilterPanel({
           </div>
 
           <div>
-            <label className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-slate-500">
+            <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-slate-400">
               PCI
             </label>
             <input
@@ -154,7 +164,7 @@ export default function MapFilterPanel({
               onChange={(event) => onPciFilterChange(event.target.value)}
               list="map-pci-filter-options"
               placeholder="All PCI"
-              className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none placeholder:text-slate-600 focus:border-blue-500"
+              className="w-full rounded-xl border border-slate-700/80 bg-slate-950 px-3 py-2 text-sm font-semibold text-white outline-none placeholder:text-slate-600 focus:border-blue-500"
             />
             <datalist id="map-pci-filter-options">
               {pciOptions.map((pci) => (
@@ -165,9 +175,11 @@ export default function MapFilterPanel({
         </div>
       </div>
 
-      <div className="rounded-xl border border-slate-800 bg-slate-900 p-3">
-        <div className="mb-4 text-xs font-black uppercase tracking-wide text-slate-400">
-          Map Layer Filters
+      {/* Group 3: Map Layer Toggles */}
+      <div className="rounded-2xl border border-slate-800/80 bg-slate-900/60 p-4 shadow-lg backdrop-blur-md">
+        <div className="mb-3 flex items-center gap-2 text-xs font-black uppercase tracking-wider text-purple-400">
+          <Layers className="h-4 w-4" />
+          <span>Map Layer Controls</span>
         </div>
 
         <div className="space-y-3">
@@ -199,13 +211,10 @@ export default function MapFilterPanel({
           />
 
           {showPredictions && (
-            <div className="rounded-xl border border-purple-300/40 bg-purple-950/30 p-3">
+            <div className="rounded-xl border border-purple-500/30 bg-purple-950/20 p-2">
               {lbPredictionControlProps && (
-                <div className="mb-3">
-                  <LbPredictionControls {...lbPredictionControlProps} compact />
-                </div>
+                <LbPredictionControls {...lbPredictionControlProps} compact />
               )}
-              
             </div>
           )}
 
@@ -222,3 +231,4 @@ export default function MapFilterPanel({
     </div>
   );
 }
+

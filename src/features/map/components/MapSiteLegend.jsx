@@ -127,8 +127,8 @@ export default function MapSiteLegend({
         width: size.width,
       }}
     >
-      <div className="relative overflow-hidden rounded-[22px] border border-slate-200 bg-white/95 shadow-2xl ring-1 ring-white/70 backdrop-blur">
-        <div className="flex w-full items-center justify-between gap-3 border-b border-slate-100 px-4 py-3 transition hover:bg-slate-50">
+      <div className="relative overflow-hidden rounded-[22px] border border-slate-800/80 bg-slate-950/90 text-slate-100 shadow-2xl backdrop-blur-xl ring-1 ring-white/10">
+        <div className="flex w-full items-center justify-between gap-3 border-b border-slate-800/80 px-4 py-3 transition hover:bg-slate-900/60">
           <div
             role="button"
             tabIndex={0}
@@ -136,17 +136,17 @@ export default function MapSiteLegend({
             className="flex min-w-0 flex-1 cursor-move items-center gap-3"
             title="Drag to move legend"
           >
-            <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-sm">
+            <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-600/90 text-white shadow-md shadow-blue-500/20">
               <Radio className="h-4 w-4" />
             </span>
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <span className="text-sm font-black text-slate-900">Site Legend</span>
-                <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-black text-blue-700">
+                <span className="text-sm font-black text-white">Site Legend</span>
+                <span className="rounded-full border border-blue-500/40 bg-blue-500/10 px-2 py-0.5 text-xs font-black text-blue-400">
                   {sites.length}
                 </span>
               </div>
-              <div className="truncate text-xs text-slate-500">
+              <div className="truncate text-xs text-slate-400">
                 {open
                   ? "Click a site to highlight it on the map"
                   : activeSite
@@ -158,10 +158,10 @@ export default function MapSiteLegend({
           <button
             type="button"
             onClick={() => setOpen((value) => !value)}
-            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-800 bg-slate-900/80 text-slate-400 hover:border-slate-700 hover:text-white"
             title={open ? "Collapse legend" : "Expand legend"}
           >
-            <ChevronDown className={`h-5 w-5 transition-transform ${open ? "rotate-180" : ""}`} />
+            <ChevronDown className={`h-5 w-5 transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
           </button>
         </div>
 
@@ -169,25 +169,25 @@ export default function MapSiteLegend({
           <button
             type="button"
             onClick={() => onSiteClick(activeSite)}
-            className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-blue-50"
+            className="flex w-full items-center justify-between gap-3 border-b border-slate-800/40 bg-blue-950/20 px-4 py-3 text-left hover:bg-blue-900/30"
           >
             <div className="min-w-0">
-              <div className="truncate text-sm font-black text-slate-900">{activeSite.Site_Name}</div>
-              <div className="mt-0.5 flex items-center gap-1 text-xs text-slate-500">
-                <Hash className="h-3 w-3 shrink-0" />
+              <div className="truncate text-sm font-black text-white">{activeSite.Site_Name}</div>
+              <div className="mt-0.5 flex items-center gap-1 text-xs text-slate-400">
+                <Hash className="h-3 w-3 shrink-0 text-blue-400" />
                 <span className="truncate">{activeSite.SITEID}</span>
               </div>
             </div>
-            <span className="rounded-full bg-blue-600 px-2.5 py-1 text-xs font-black text-white">
+            <span className="rounded-full border border-blue-500/40 bg-blue-600 px-2.5 py-1 text-xs font-black text-white shadow-sm">
               Active
             </span>
           </button>
         )}
 
         {open && (
-        <div className="overflow-y-auto p-2" style={{ maxHeight: size.height }}>
+        <div className="overflow-y-auto p-2.5 space-y-2" style={{ maxHeight: size.height }}>
           {sites.length === 0 ? (
-            <p className="px-3 py-4 text-sm text-slate-500">No plotted sites found.</p>
+            <p className="px-3 py-4 text-sm text-slate-400">No plotted sites found.</p>
           ) : (
             sites.map((site) => {
               const cells = Array.isArray(site.cells) ? site.cells : [];
@@ -207,18 +207,18 @@ export default function MapSiteLegend({
                   onClick={() => onSiteClick(site)}
                   onMouseEnter={() => onSiteHover(site.SITEID)}
                   onMouseLeave={onSiteLeave}
-                  className={`mb-2 flex w-full items-center gap-3 rounded-xl border p-3 text-left transition ${
+                  className={`flex w-full items-center gap-3 rounded-xl border p-2.5 text-left transition-all ${
                     selected
-                      ? "border-blue-300 bg-blue-50 shadow-sm"
+                      ? "border-blue-500/80 bg-blue-950/50 shadow-md shadow-blue-500/10"
                       : hovered
-                        ? "border-slate-300 bg-slate-50 shadow-sm"
-                        : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
+                        ? "border-slate-700 bg-slate-900/90 shadow-sm"
+                        : "border-slate-800/80 bg-slate-900/50 hover:border-slate-700 hover:bg-slate-900/80"
                   }`}
                 >
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-black text-slate-900">{site.Site_Name}</div>
-                    <div className="mt-0.5 flex items-center gap-1 text-xs text-slate-500">
-                      <Hash className="h-3 w-3 shrink-0" />
+                    <div className="truncate text-sm font-bold text-white">{site.Site_Name}</div>
+                    <div className="mt-0.5 flex items-center gap-1 text-xs text-slate-400">
+                      <Hash className="h-3 w-3 shrink-0 text-slate-500" />
                       <span className="truncate">{site.SITEID}</span>
                     </div>
                   </div>
@@ -228,7 +228,7 @@ export default function MapSiteLegend({
                       return (
                         <span
                           key={sector}
-                          className="inline-flex shrink-0 items-center justify-center rounded-full px-2 py-1 text-xs font-bold text-white"
+                          className="inline-flex shrink-0 items-center justify-center rounded-full px-2 py-0.5 text-[10px] font-black text-white shadow-sm"
                           style={{ backgroundColor: colors.fill }}
                           title={`Sector ${sector}: ${cellsBySector[sector]} cell(s)`}
                         >
@@ -237,7 +237,6 @@ export default function MapSiteLegend({
                       );
                     })}
                   </div>
-                 
                 </button>
               );
             })
@@ -247,7 +246,7 @@ export default function MapSiteLegend({
         <button
           type="button"
           onPointerDown={(event) => startPointerTracking(event, "resize")}
-          className="absolute bottom-1 right-1 h-5 w-5 cursor-nwse-resize rounded-br-[18px] rounded-tl-lg border-b-2 border-r-2 border-slate-400/80 bg-white/70 hover:bg-blue-50"
+          className="absolute bottom-1 right-1 h-5 w-5 cursor-nwse-resize rounded-br-[18px] rounded-tl-lg border-b-2 border-r-2 border-slate-600 bg-slate-900/90 hover:bg-blue-600/40"
           title="Resize legend"
           aria-label="Resize site legend"
         />
@@ -255,3 +254,4 @@ export default function MapSiteLegend({
     </div>
   );
 }
+
