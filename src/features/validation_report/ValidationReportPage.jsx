@@ -24,6 +24,8 @@ const severityClasses = {
   WARNING: "bg-blue-50 text-blue-700 border-blue-200",
   NORMAL: "bg-emerald-50 text-emerald-700 border-emerald-200",
 };
+const COMBINED_RADIO_METRIC = "__combined_radio__";
+const COMBINED_RADIO_LABEL = "Combined Radio KPIs";
 
 function isKpiUpload(upload) {
   return [upload?.remarks, upload?.fileName, upload?.originalName]
@@ -125,7 +127,7 @@ export default function ValidationReportPage() {
   const [uploads, setUploads] = useState([]);
   const [selectedFileId, setSelectedFileId] = useState("");
   const [metrics, setMetrics] = useState([]);
-  const [selectedMetric, setSelectedMetric] = useState("");
+  const [selectedMetric, setSelectedMetric] = useState(COMBINED_RADIO_METRIC);
   const [report, setReport] = useState(null);
   const [worstCells, setWorstCells] = useState([]);
   const [worstSites, setWorstSites] = useState([]);
@@ -182,15 +184,9 @@ export default function ValidationReportPage() {
       : [])
       .filter((metric) => metricKey(metric));
     setMetrics(metricItems);
-    const firstMetric = metricItems[0];
-    const nextMetric = firstMetric ? metricKey(firstMetric) : "";
+    const nextMetric = COMBINED_RADIO_METRIC;
     setSelectedMetric(nextMetric);
-    if (nextMetric) {
-      await loadWorst(fileId, nextMetric);
-    } else {
-      setWorstCells([]);
-      setWorstSites([]);
-    }
+    await loadWorst(fileId, nextMetric);
     setLoadingAnalysis(false);
   }
 
@@ -200,8 +196,8 @@ export default function ValidationReportPage() {
     setWorstMessage("");
     setCellDetail(null);
     const [cellsResponse, sitesResponse] = await Promise.all([
-      fetchWorstCells({ fileId, metric, limit: 10 }),
-      fetchWorstSites({ fileId, metric, limit: 10 }),
+      fetchWorstCells({ fileId, metric: COMBINED_RADIO_METRIC, limit: 10 }),
+      fetchWorstSites({ fileId, metric: COMBINED_RADIO_METRIC, limit: 10 }),
     ]);
     setWorstCells(cellsResponse?.success ? cellsResponse.data?.data || [] : []);
     setWorstSites(sitesResponse?.success ? sitesResponse.data?.data || [] : []);
@@ -219,6 +215,11 @@ export default function ValidationReportPage() {
   async function handleWorstCellClick(row) {
     const cellName = row?.cell || row?.cellName;
     if (!selectedFileId || !selectedMetric || !cellName) return;
+    if (selectedMetric === COMBINED_RADIO_METRIC) {
+      setCellDetail(null);
+      setWorstMessage("Combined worst-cell ranking is based on multiple KPIs. Select one KPI metric to open a single-KPI time-series detail.");
+      return;
+    }
     setLoadingCellDetail(true);
     const response = await fetchWorstCellDetail({
       fileId: selectedFileId,
@@ -274,18 +275,13 @@ export default function ValidationReportPage() {
               </select>
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">Worst Performance Metric</label>
-              <select
-                value={selectedMetric}
-                onChange={(event) => handleMetricChange(event.target.value)}
-                className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-              >
-                {metrics.map((metric) => (
-                  <option key={metricKey(metric)} value={metricKey(metric)}>
-                    {metricLabel(metric)}
-                  </option>
-                ))}
-              </select>
+              <label className="mb-1 block text-sm font-medium text-slate-700">Worst Performance Method</label>
+              <div className="rounded-xl border border-orange-200 bg-orange-50 px-3 py-2 text-sm font-semibold text-orange-800">
+                {COMBINED_RADIO_LABEL}
+              </div>
+              <p className="mt-1 text-xs text-slate-500">
+                Uses multiple radio KPIs together, not a single selected KPI.
+              </p>
             </div>
             <div className="flex items-end">
               <button

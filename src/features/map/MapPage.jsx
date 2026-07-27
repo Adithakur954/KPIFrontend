@@ -76,6 +76,8 @@ const clampMapScale = (value) => Math.min(8, Math.max(0.05, Number(value || 1)))
 const MAX_PREDICTION_MAP_MARKERS = 600;
 const predictionActionDisplayOrder = ["LOAD_BALANCE", "QUALITY_CHECK", "CAPACITY_REVIEW", "COVERAGE_CHECK", "OBSERVE"];
 const MAP_DATA_TIMEOUT_MS = 20000;
+const COMBINED_RADIO_METRIC = "__combined_radio__";
+const COMBINED_RADIO_LABEL = "Combined Radio KPIs";
 const analyticsTabs = [
   { value: "overview", label: "Overview" },
   { value: "predictions", label: "Prediction" },
@@ -537,6 +539,35 @@ function isSampleSiteMapKpiUpload(upload) {
 }
 
 function buildSampleWorstCells(metric, limit = 25) {
+  if (metric === COMBINED_RADIO_METRIC) {
+    const combinedKeys = ["prbdlutilization", "userdlavergthpmbps", "rrcsr", "cqiavg", "cellavailability"];
+    return [...sampleSiteMapKpiRows]
+      .map((row) => {
+        const score = combinedKeys.reduce((total, key) => {
+          const value = Number(row[key]);
+          if (!Number.isFinite(value)) return total;
+          if (lowerMetricIsWorse.has(key)) {
+            return total + Math.max(0, 100 - value);
+          }
+          return total + value;
+        }, 0);
+        return { ...row, combinedScore: score };
+      })
+      .sort((left, right) => Number(right.combinedScore || 0) - Number(left.combinedScore || 0))
+      .slice(0, limit)
+      .map((row, index) => ({
+        ...row,
+        rank: index + 1,
+        metric: COMBINED_RADIO_LABEL,
+        metricName: COMBINED_RADIO_LABEL,
+        averageValue: Number(row.combinedScore || 0).toFixed(2),
+        combinedScore: Number(row.combinedScore || 0).toFixed(2),
+        affectedMetricCount: combinedKeys.length,
+        severity: index < 5 ? "CRITICAL" : index < 12 ? "MAJOR" : "MINOR",
+        source: "sample-kpi",
+      }));
+  }
+
   const key = normalizeKey(metric);
   const metricMeta = sampleSiteMapKpiMetrics.find((item) => normalizeKey(item.key) === key || normalizeKey(item.label) === key);
   const metricName = metricMeta?.label || metric || "Selected KPI";
@@ -1099,7 +1130,7 @@ export default function MapPage() {
   const [selectedSiteFileId, setSelectedSiteFileId] = useState("");
   const [selectedFileId, setSelectedFileId] = useState("");
   const [metrics, setMetrics] = useState([]);
-  const [selectedMetric, setSelectedMetric] = useState("");
+  const [selectedMetric, setSelectedMetric] = useState(COMBINED_RADIO_METRIC);
   const [worstCells, setWorstCells] = useState([]);
   const [worstMessage, setWorstMessage] = useState("");
   const [loadingWorst, setLoadingWorst] = useState(false);
@@ -1211,7 +1242,7 @@ export default function MapPage() {
 
   const handleKpiFileChange = useCallback((value) => {
     setSelectedFileId(value);
-    setSelectedMetric("");
+    setSelectedMetric(COMBINED_RADIO_METRIC);
     setWorstCells([]);
     setWorstMessage("");
     setPredictions([]);
@@ -1333,7 +1364,7 @@ export default function MapPage() {
   useEffect(() => {
     if (!selectedFileId) {
       setMetrics([]);
-      setSelectedMetric("");
+      setSelectedMetric(COMBINED_RADIO_METRIC);
       setWorstCells([]);
       setWorstMessage("");
       setSiteSummary(null);
@@ -1359,8 +1390,7 @@ export default function MapPage() {
       const fallbackMetrics = isSampleSiteMapKpiUpload(selectedUpload) ? sampleSiteMapKpiMetrics : [];
       const nextMetrics = metricItems.length > 0 ? metricItems : fallbackMetrics;
       setMetrics(nextMetrics);
-      const nextMetric = metricKey(nextMetrics[0]);
-      setSelectedMetric(nextMetric);
+      setSelectedMetric(COMBINED_RADIO_METRIC);
       setLoadingWorst(false);
     };
     loadMetrics();
@@ -1516,7 +1546,7 @@ export default function MapPage() {
   }, [selectedFileId]);
 
   useEffect(() => {
-    if (!selectedFileId || !selectedMetric) {
+    if (!selectedFileId) {
       setWorstCells([]);
       return;
     }
@@ -1528,14 +1558,14 @@ export default function MapPage() {
       try {
         const response = await fetchWorstCells({
           fileId: selectedFileId,
-          metric: selectedMetric,
+          metric: COMBINED_RADIO_METRIC,
           limit: 25,
         });
         const backendRows = response?.success ? asArray(response.data?.data) : [];
         if (backendRows.length > 0) {
           setWorstCells(backendRows);
         } else if (isSampleSiteMapKpiUpload(selectedUpload)) {
-          setWorstCells(buildSampleWorstCells(selectedMetric, 25));
+          setWorstCells(buildSampleWorstCells(COMBINED_RADIO_METRIC, 25));
           setWorstMessage("Using bundled sample KPI rows for this site map file.");
         } else {
           setWorstCells([]);
@@ -1543,7 +1573,7 @@ export default function MapPage() {
         }
       } catch (error) {
         if (isSampleSiteMapKpiUpload(selectedUpload)) {
-          setWorstCells(buildSampleWorstCells(selectedMetric, 25));
+          setWorstCells(buildSampleWorstCells(COMBINED_RADIO_METRIC, 25));
           setWorstMessage("Using bundled sample KPI rows because backend KPI rows were not available.");
         } else {
           setWorstCells([]);
@@ -1554,7 +1584,7 @@ export default function MapPage() {
       }
     };
     loadWorstCells();
-  }, [selectedFileId, selectedMetric, uploads]);
+  }, [selectedFileId, uploads]);
 
   // Memoize grouped sites
   const groupedSites = useMemo(() => {
@@ -1620,11 +1650,14 @@ export default function MapPage() {
     const apiPredictions = asArray(predictions);
     if (apiPredictions.length > 0) return apiPredictions;
     if (!showWorstSites) return [];
-    return fallbackPredictionsFromWorstCells(worstCells, selectedMetric);
-  }, [predictions, showWorstSites, worstCells, selectedMetric]);
+    return fallbackPredictionsFromWorstCells(worstCells, COMBINED_RADIO_LABEL);
+  }, [predictions, showWorstSites, worstCells]);
 
   const kpiMetricOptions = useMemo(
-    () => metrics.map((metric) => ({ value: metricKey(metric), label: metricLabel(metric) })).filter((metric) => metric.value),
+    () => [
+      { value: COMBINED_RADIO_METRIC, label: COMBINED_RADIO_LABEL },
+      ...metrics.map((metric) => ({ value: metricKey(metric), label: metricLabel(metric) })).filter((metric) => metric.value),
+    ],
     [metrics],
   );
 
@@ -2606,7 +2639,7 @@ export default function MapPage() {
           ["LB Config", lbResult ? `Method: ${lbMethod}  |  ML Mode: ${lbMlMode}  |  Quantile: ${lbQuantile}` : "LB/WCF not run"],
           ["Alarm summary", alarmSummary ? `Open: ${formatNumber(alarmSummary.totalOpen)} | C:${alarmSummary.critical||0} M:${alarmSummary.major||0} m:${alarmSummary.minor||0} W:${alarmSummary.warning||0}` : `${formatNumber(alarms.length)} alarms loaded`],
           ["Data quality", `${formatNumber(totalSiteRows)} raw rows | ${formatNumber(missingCoordinateRows)} missing coords | ${coordinateCoverage}% plottable`],
-          ["KPI metric", selectedMetric || "None selected \u2014 worst cell ranking not available"],
+          ["Worst-cell method", COMBINED_RADIO_LABEL],
           ["Active filters", activeFilters],
           ["Map layers", `Cells:${showCells?"ON":"OFF"} | Pred:${showPredictions?"ON":"OFF"} | Worst:${showWorstSites?"ON":"OFF"} | Alarms:${showAlarms?"ON":"OFF"}`],
         ],
@@ -2855,7 +2888,7 @@ export default function MapPage() {
       // PAGE 6 — Worst Cell Rankings
       // ═══════════════════════════════════════════════════════════════════
       doc.addPage("a4","landscape");
-      pageTitle("Worst Cell Rankings", `Metric: ${selectedMetric||"None selected"}  \u00b7  ${formatNumber(worstCellMapItems.length)} cells ranked`);
+      pageTitle("Worst Cell Rankings", `Method: ${COMBINED_RADIO_LABEL}  \u00b7  ${formatNumber(worstCellMapItems.length)} cells ranked`);
 
       if (!selectedMetric) {
         noDataBox(margin, 68, contentWidth, 60,
@@ -2863,7 +2896,7 @@ export default function MapPage() {
         );
       } else if (worstCellMapItems.length===0) {
         noDataBox(margin, 68, contentWidth, 60,
-          `No worst cells found for metric "${selectedMetric}". Ensure a KPI file is loaded and the selected metric has data.`
+          `No worst cells found. Ensure a KPI file is loaded and radio KPI columns are available.`
         );
       } else {
         const wcSumW=Math.floor((contentWidth-15)/4), wcSumH=50, wcSumY=68;
@@ -2873,7 +2906,7 @@ export default function MapPage() {
         card(margin+3*(wcSumW+5),wcSumY,wcSumW,wcSumH,"Minor",       formatNumber(worstCellMapItems.filter(w=>w.severity==="MINOR").length),  "#D97706");
 
         let wcY=wcSumY+wcSumH+12;
-        sectionHeading(`Worst Cells \u2014 ${selectedMetric}`, margin, wcY, contentWidth, "#EA580C"); wcY+=24;
+        sectionHeading(`Worst Cells \u2014 ${COMBINED_RADIO_LABEL}`, margin, wcY, contentWidth, "#EA580C"); wcY+=24;
         const wcCols=[30,90,110,110,70,60,contentWidth-30-90-110-110-70-60];
         table(
           ["Rank","Site","Cell","Metric","Value","Severity","Action / Notes"],
@@ -4485,7 +4518,6 @@ export default function MapPage() {
                 metrics={kpiMetricOptions}
                 selectedMetric={selectedMetric}
                 onMetricChange={setSelectedMetric}
-                showMetric
               />
 
               {showWorstSites && (
@@ -4591,9 +4623,11 @@ export default function MapPage() {
                       metrics={kpiMetricOptions}
                       selectedMetric={selectedMetric}
                       onMetricChange={setSelectedMetric}
-                      showMetric
                       compact
                     />
+                    <div className="mt-2 rounded-lg bg-orange-50 px-2 py-1.5 text-[11px] font-bold text-orange-700">
+                      Ranking method: Combined radio KPI score.
+                    </div>
                   </div>
                   <div className="mb-2 flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
@@ -4627,7 +4661,7 @@ export default function MapPage() {
                   <div className="mt-3 rounded-lg bg-white p-2">
                     <div className="mb-2 text-xs font-bold uppercase text-red-700">Worst Cells On Map</div>
                     {worstCells.length === 0 ? (
-                      <p className="text-xs text-slate-500">Select a KPI metric to load worst cells.</p>
+                      <p className="text-xs text-slate-500">Worst cells use combined radio KPI scoring by default.</p>
                     ) : (
                       <div className="max-h-44 space-y-2 overflow-y-auto pr-1">
                         {worstCells.slice(0, 10).map((row) => (
@@ -5071,9 +5105,11 @@ export default function MapPage() {
                     metrics={kpiMetricOptions}
                     selectedMetric={selectedMetric}
                     onMetricChange={setSelectedMetric}
-                    showMetric
                     compact
                   />
+                  <div className="mt-2 rounded-lg border border-orange-500/20 bg-orange-950/20 px-2 py-1.5 text-[11px] font-bold text-orange-200">
+                    Ranking method: Combined radio KPI score.
+                  </div>
                 </div>
                 <div className="flex items-center justify-between">
                   <div className="text-xs font-black uppercase tracking-wider text-red-400">Worst Cells Rankings</div>

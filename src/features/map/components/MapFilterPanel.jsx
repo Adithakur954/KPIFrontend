@@ -96,9 +96,11 @@ export default function MapFilterPanel({
             metrics={metrics}
             selectedMetric={selectedMetric}
             onMetricChange={onMetricChange}
-            showMetric
             compact
           />
+          <div className="rounded-xl border border-orange-500/30 bg-orange-950/20 px-3 py-2 text-xs font-semibold leading-5 text-orange-200">
+            Worst Cells use combined radio KPI scoring across load, throughput, accessibility, availability, quality, and drops where available.
+          </div>
         </div>
       </div>
 
@@ -231,4 +233,3 @@ export default function MapFilterPanel({
     </div>
   );
 }
-
