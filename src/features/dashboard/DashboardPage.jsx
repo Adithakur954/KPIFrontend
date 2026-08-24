@@ -102,6 +102,7 @@ export default function DashboardPage() {
   const isInitialMount = useRef(true);
   const hasHydratedSelectionRef = useRef(false);
   const hasLoadedDashboardFilesRef = useRef(false);
+  const hasReconciledDashboardScopeRef = useRef(false);
   const isRestoringDashboardCacheRef = useRef(false);
   const thresholdFetchRequestIdRef = useRef(0);
   const saveTimeout = useRef(null);
@@ -451,13 +452,33 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!hasLoadedDashboardFilesRef.current) return;
-    if (!selectedDashboardFileId) return;
+    if (hasReconciledDashboardScopeRef.current) return;
+
+    const latestFileId = dashboardFileOptions.length
+      ? String(dashboardFileOptions[0].id)
+      : "";
+
+    if (!latestFileId) {
+      hasReconciledDashboardScopeRef.current = true;
+      if (selectedDashboardFileId) {
+        setSelectedDashboardFileId("");
+      }
+      return;
+    }
+
+    if (!selectedDashboardFileId) {
+      hasReconciledDashboardScopeRef.current = true;
+      setSelectedDashboardFileId(latestFileId);
+      return;
+    }
+
     const exists = dashboardFileOptions.some(
       (file) => String(file.id) === String(selectedDashboardFileId),
     );
     if (!exists) {
-      setSelectedDashboardFileId("");
+      setSelectedDashboardFileId(latestFileId);
     }
+    hasReconciledDashboardScopeRef.current = true;
   }, [dashboardFileOptions, selectedDashboardFileId]);
 
   useEffect(() => {
@@ -467,6 +488,8 @@ export default function DashboardPage() {
       if (response?.success) {
         const files = response.data || [];
         setDashboardFileOptions(files);
+      } else {
+        setSelectedDashboardFileId("");
       }
     };
     loadDashboardFiles();
