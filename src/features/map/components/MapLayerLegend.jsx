@@ -15,7 +15,8 @@ export default function MapLayerLegend({
   selectedPci = "",
   sourcePciLabel = "",
   selectedPciCount = 0,
-  pciNeighbourCount = 0,
+  samePciSiteCount = 0,
+  pciLayerLabel = "Other same-PCI sites",
 }) {
   const predictionItems = [
     ["Load Balance", "LOAD_BALANCE"],
@@ -108,9 +109,9 @@ export default function MapLayerLegend({
               <div className="flex items-center justify-between gap-2 rounded-lg border border-slate-800 bg-slate-900/80 px-2.5 py-1">
                 <div className="flex min-w-0 items-center gap-1.5">
                   <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-red-500" />
-                  <span className="truncate text-[11px] font-bold text-slate-300">Same PCI neighbours</span>
+                  <span className="truncate text-[11px] font-bold text-slate-300">{pciLayerLabel}</span>
                 </div>
-                <span className="text-[11px] font-black text-white">{pciNeighbourCount}</span>
+                <span className="text-[11px] font-black text-white">{samePciSiteCount}</span>
               </div>
               <div className="flex items-center gap-1.5 rounded-lg border border-slate-800 bg-slate-900/80 px-2.5 py-1">
                 <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-emerald-500" />
@@ -187,4 +188,3 @@ export default function MapLayerLegend({
     </div>
   );
 }
-

@@ -76,8 +76,16 @@ const clampMapScale = (value) => Math.min(8, Math.max(0.05, Number(value || 1)))
 const MAX_PREDICTION_MAP_MARKERS = 600;
 const predictionActionDisplayOrder = ["LOAD_BALANCE", "QUALITY_CHECK", "CAPACITY_REVIEW", "COVERAGE_CHECK", "OBSERVE"];
 const MAP_DATA_TIMEOUT_MS = 20000;
-const COMBINED_RADIO_METRIC = "__combined_radio__";
-const COMBINED_RADIO_LABEL = "Combined Radio KPIs";
+const DEFAULT_WORST_CELL_METRIC_LABEL = "Selected KPI";
+const INFERRED_NEIGHBOUR_MAX_DISTANCE_KM = 8;
+const INFERRED_NEIGHBOUR_AZIMUTH_TOLERANCE_DEG = 80;
+const pciLayerModes = [
+  { value: "same-pci", label: "Same PCI" },
+  { value: "neighbours", label: "Neighbours" },
+  { value: "collision", label: "Collision" },
+  { value: "confusion", label: "Confusion" },
+  { value: "both", label: "Both Risks" },
+];
 const analyticsTabs = [
   { value: "overview", label: "Overview" },
   { value: "predictions", label: "Prediction" },
@@ -524,6 +532,45 @@ function distanceKm(from, to) {
   return earthRadiusKm * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+function bearingDeg(from, to) {
+  if (!from || !to) return null;
+  const lat1 = Number(from.lat);
+  const lon1 = Number(from.lon);
+  const lat2 = Number(to.lat);
+  const lon2 = Number(to.lon);
+  if (![lat1, lon1, lat2, lon2].every(Number.isFinite)) return null;
+
+  const phi1 = (lat1 * Math.PI) / 180;
+  const phi2 = (lat2 * Math.PI) / 180;
+  const deltaLon = ((lon2 - lon1) * Math.PI) / 180;
+  const y = Math.sin(deltaLon) * Math.cos(phi2);
+  const x = Math.cos(phi1) * Math.sin(phi2) - Math.sin(phi1) * Math.cos(phi2) * Math.cos(deltaLon);
+  return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+}
+
+function angleDeltaDeg(left, right) {
+  const leftNumber = Number(left);
+  const rightNumber = Number(right);
+  if (![leftNumber, rightNumber].every(Number.isFinite)) return null;
+  return Math.abs(((leftNumber - rightNumber + 540) % 360) - 180);
+}
+
+function siteFacesCandidate(site, candidate) {
+  const bearing = bearingDeg(site, candidate);
+  if (bearing == null) return false;
+  return asArray(site?.cells).some((cell) => {
+    const delta = angleDeltaDeg(cell.AZIMUTH, bearing);
+    return delta != null && delta <= INFERRED_NEIGHBOUR_AZIMUTH_TOLERANCE_DEG;
+  });
+}
+
+function isInferredNeighbourSite(source, candidate) {
+  const distance = distanceKm(source, candidate);
+  if (distance == null || distance > INFERRED_NEIGHBOUR_MAX_DISTANCE_KM) return false;
+  if (distance <= 1) return true;
+  return siteFacesCandidate(source, candidate) || siteFacesCandidate(candidate, source);
+}
+
 function metricKey(metric) {
   if (typeof metric === "string") return metric;
   return metric?.key || metric?.metricKey || metric?.name || metric?.label || "";
@@ -539,35 +586,6 @@ function isSampleSiteMapKpiUpload(upload) {
 }
 
 function buildSampleWorstCells(metric, limit = 25) {
-  if (metric === COMBINED_RADIO_METRIC) {
-    const combinedKeys = ["prbdlutilization", "userdlavergthpmbps", "rrcsr", "cqiavg", "cellavailability"];
-    return [...sampleSiteMapKpiRows]
-      .map((row) => {
-        const score = combinedKeys.reduce((total, key) => {
-          const value = Number(row[key]);
-          if (!Number.isFinite(value)) return total;
-          if (lowerMetricIsWorse.has(key)) {
-            return total + Math.max(0, 100 - value);
-          }
-          return total + value;
-        }, 0);
-        return { ...row, combinedScore: score };
-      })
-      .sort((left, right) => Number(right.combinedScore || 0) - Number(left.combinedScore || 0))
-      .slice(0, limit)
-      .map((row, index) => ({
-        ...row,
-        rank: index + 1,
-        metric: COMBINED_RADIO_LABEL,
-        metricName: COMBINED_RADIO_LABEL,
-        averageValue: Number(row.combinedScore || 0).toFixed(2),
-        combinedScore: Number(row.combinedScore || 0).toFixed(2),
-        affectedMetricCount: combinedKeys.length,
-        severity: index < 5 ? "CRITICAL" : index < 12 ? "MAJOR" : "MINOR",
-        source: "sample-kpi",
-      }));
-  }
-
   const key = normalizeKey(metric);
   const metricMeta = sampleSiteMapKpiMetrics.find((item) => normalizeKey(item.key) === key || normalizeKey(item.label) === key);
   const metricName = metricMeta?.label || metric || "Selected KPI";
@@ -997,7 +1015,7 @@ function normalizeSiteMapRow(row) {
     Technology: technology,
     Sector: firstValue(row, ["Sector", "SECTOR", "sector", "SEC", "SEC_ID", "Sector_ID", "Sector_Name", "sectorName"], parsedCell.sector || ""),
     Antenna_Height: toNumber(firstValue(row, ["Antenna_Height", "antennaHeight"])) ?? 0,
-    PCI: firstValue(row, ["PCI", "pci"], "-"),
+    PCI: firstValue(row, ["PCI", "pci", "Physical Cell ID [PCI]", "Physical_Cell_ID_PCI", "physicalCellIdPci", "physical_cell_id", "physicalCellId"], "-"),
     TAC: firstValue(row, ["TAC", "tac"], "-"),
     E_tilt: firstValue(row, ["E_tilt", "eTilt"], "-"),
     M_tilt: firstValue(row, ["M_tilt", "mTilt"], "-"),
@@ -1130,7 +1148,7 @@ export default function MapPage() {
   const [selectedSiteFileId, setSelectedSiteFileId] = useState("");
   const [selectedFileId, setSelectedFileId] = useState("");
   const [metrics, setMetrics] = useState([]);
-  const [selectedMetric, setSelectedMetric] = useState(COMBINED_RADIO_METRIC);
+  const [selectedMetric, setSelectedMetric] = useState("");
   const [worstCells, setWorstCells] = useState([]);
   const [worstMessage, setWorstMessage] = useState("");
   const [loadingWorst, setLoadingWorst] = useState(false);
@@ -1172,7 +1190,9 @@ export default function MapPage() {
   const [activeMapPanel, setActiveMapPanel] = useState("overview");
   const [selectedPci, setSelectedPci] = useState("");
   const [selectedPciSiteId, setSelectedPciSiteId] = useState("");
+  const [pciLayerMode, setPciLayerMode] = useState("same-pci");
   const [exportingMapPdf, setExportingMapPdf] = useState(false);
+  const selectedPciKeyRef = useRef("");
 
   // Refs for performance
   const cellPolygonsRef = useRef(new Map());
@@ -1242,7 +1262,7 @@ export default function MapPage() {
 
   const handleKpiFileChange = useCallback((value) => {
     setSelectedFileId(value);
-    setSelectedMetric(COMBINED_RADIO_METRIC);
+    setSelectedMetric("");
     setWorstCells([]);
     setWorstMessage("");
     setPredictions([]);
@@ -1364,7 +1384,7 @@ export default function MapPage() {
   useEffect(() => {
     if (!selectedFileId) {
       setMetrics([]);
-      setSelectedMetric(COMBINED_RADIO_METRIC);
+      setSelectedMetric("");
       setWorstCells([]);
       setWorstMessage("");
       setSiteSummary(null);
@@ -1390,7 +1410,7 @@ export default function MapPage() {
       const fallbackMetrics = isSampleSiteMapKpiUpload(selectedUpload) ? sampleSiteMapKpiMetrics : [];
       const nextMetrics = metricItems.length > 0 ? metricItems : fallbackMetrics;
       setMetrics(nextMetrics);
-      setSelectedMetric(COMBINED_RADIO_METRIC);
+      setSelectedMetric(metricKey(nextMetrics[0]) || "");
       setLoadingWorst(false);
     };
     loadMetrics();
@@ -1546,7 +1566,7 @@ export default function MapPage() {
   }, [selectedFileId]);
 
   useEffect(() => {
-    if (!selectedFileId) {
+    if (!selectedFileId || !selectedMetric) {
       setWorstCells([]);
       return;
     }
@@ -1558,14 +1578,14 @@ export default function MapPage() {
       try {
         const response = await fetchWorstCells({
           fileId: selectedFileId,
-          metric: COMBINED_RADIO_METRIC,
+          metric: selectedMetric,
           limit: 25,
         });
         const backendRows = response?.success ? asArray(response.data?.data) : [];
         if (backendRows.length > 0) {
           setWorstCells(backendRows);
         } else if (isSampleSiteMapKpiUpload(selectedUpload)) {
-          setWorstCells(buildSampleWorstCells(COMBINED_RADIO_METRIC, 25));
+          setWorstCells(buildSampleWorstCells(selectedMetric, 25));
           setWorstMessage("Using bundled sample KPI rows for this site map file.");
         } else {
           setWorstCells([]);
@@ -1573,7 +1593,7 @@ export default function MapPage() {
         }
       } catch (error) {
         if (isSampleSiteMapKpiUpload(selectedUpload)) {
-          setWorstCells(buildSampleWorstCells(COMBINED_RADIO_METRIC, 25));
+          setWorstCells(buildSampleWorstCells(selectedMetric, 25));
           setWorstMessage("Using bundled sample KPI rows because backend KPI rows were not available.");
         } else {
           setWorstCells([]);
@@ -1584,7 +1604,7 @@ export default function MapPage() {
       }
     };
     loadWorstCells();
-  }, [selectedFileId, uploads]);
+  }, [selectedFileId, selectedMetric, uploads]);
 
   // Memoize grouped sites
   const groupedSites = useMemo(() => {
@@ -1650,15 +1670,19 @@ export default function MapPage() {
     const apiPredictions = asArray(predictions);
     if (apiPredictions.length > 0) return apiPredictions;
     if (!showWorstSites) return [];
-    return fallbackPredictionsFromWorstCells(worstCells, COMBINED_RADIO_LABEL);
-  }, [predictions, showWorstSites, worstCells]);
+    const selectedMetricLabel = metrics
+      .map((metric) => ({ value: metricKey(metric), label: metricLabel(metric) }))
+      .find((option) => option.value === selectedMetric)?.label || DEFAULT_WORST_CELL_METRIC_LABEL;
+    return fallbackPredictionsFromWorstCells(worstCells, selectedMetricLabel);
+  }, [predictions, showWorstSites, worstCells, metrics, selectedMetric]);
 
   const kpiMetricOptions = useMemo(
-    () => [
-      { value: COMBINED_RADIO_METRIC, label: COMBINED_RADIO_LABEL },
-      ...metrics.map((metric) => ({ value: metricKey(metric), label: metricLabel(metric) })).filter((metric) => metric.value),
-    ],
+    () => metrics.map((metric) => ({ value: metricKey(metric), label: metricLabel(metric) })).filter((metric) => metric.value),
     [metrics],
+  );
+  const selectedWorstMetricLabel = useMemo(
+    () => kpiMetricOptions.find((option) => option.value === selectedMetric)?.label || DEFAULT_WORST_CELL_METRIC_LABEL,
+    [kpiMetricOptions, selectedMetric],
   );
 
   const activePredictionSummary = useMemo(
@@ -1810,16 +1834,163 @@ export default function MapPage() {
     return selectedPciSites.find((site) => normalizeKey(site.SITEID) === normalizeKey(selectedPciSiteId)) || null;
   }, [selectedPciSites, selectedPciSiteId]);
 
-  const pciNeighbours = useMemo(() => {
+  const samePciSites = useMemo(() => {
     if (!sourcePciSite) return [];
     return selectedPciSites
       .filter((site) => normalizeKey(site.SITEID) !== normalizeKey(sourcePciSite.SITEID))
       .map((site) => ({
         ...site,
         distanceKm: distanceKm(sourcePciSite, site),
+        inferredNeighbour: isInferredNeighbourSite(sourcePciSite, site),
       }))
       .sort((a, b) => (a.distanceKm ?? Number.POSITIVE_INFINITY) - (b.distanceKm ?? Number.POSITIVE_INFINITY));
   }, [selectedPciSites, sourcePciSite]);
+
+  const inferredSamePciSites = useMemo(
+    () => samePciSites.filter((site) => site.inferredNeighbour),
+    [samePciSites],
+  );
+
+  const inferredSamePciCellCount = useMemo(
+    () => inferredSamePciSites.reduce((total, site) => total + asArray(site.matchingPciCells).length, 0),
+    [inferredSamePciSites],
+  );
+
+  const pciCollisionSummary = useMemo(() => {
+    if (!selectedPci || !sourcePciSite) {
+      return { status: "No PCI selected", severity: "normal" };
+    }
+    if (inferredSamePciSites.length > 0) {
+      return {
+        status: "Potential collision",
+        severity: "risk",
+        detail: `${inferredSamePciSites.length} inferred neighbour site(s), ${inferredSamePciCellCount} cell(s), reuse PCI ${selectedPci}.`,
+      };
+    }
+    if (samePciSites.length > 0) {
+      return {
+        status: "Reuse found, no inferred overlap",
+        severity: "watch",
+        detail: "Same PCI exists in the database, but not inside the inferred neighbour window.",
+      };
+    }
+    return { status: "No reuse found", severity: "normal", detail: "No other visible site uses this PCI." };
+  }, [inferredSamePciCellCount, inferredSamePciSites.length, samePciSites.length, selectedPci, sourcePciSite]);
+
+  const pciConfusionSummary = useMemo(() => {
+    if (!selectedPci || !sourcePciSite) {
+      return { status: "No PCI selected", severity: "normal" };
+    }
+    if (inferredSamePciCellCount >= 2) {
+      return {
+        status: "Potential confusion",
+        severity: "risk",
+        detail: `Source can infer ${inferredSamePciCellCount} neighbour cells with the same PCI.`,
+      };
+    }
+    if (inferredSamePciCellCount === 1) {
+      return {
+        status: "Single same-PCI inferred neighbour",
+        severity: "watch",
+        detail: "Collision risk exists, but confusion needs two or more same-PCI neighbour cells.",
+      };
+    }
+    return { status: "No confusion inferred", severity: "normal", detail: "No same-PCI inferred neighbours for this source." };
+  }, [inferredSamePciCellCount, selectedPci, sourcePciSite]);
+
+  const pciVisibleSites = useMemo(() => {
+    if (!selectedPci) return [];
+    if (pciLayerMode === "same-pci") return samePciSites;
+    if (pciLayerMode === "neighbours") return inferredSamePciSites;
+    if (pciLayerMode === "collision") return inferredSamePciCellCount > 0 ? inferredSamePciSites : [];
+    if (pciLayerMode === "confusion") return inferredSamePciCellCount >= 2 ? inferredSamePciSites : [];
+    if (pciLayerMode === "both") return inferredSamePciCellCount > 0 ? inferredSamePciSites : [];
+    return samePciSites;
+  }, [inferredSamePciCellCount, inferredSamePciSites, pciLayerMode, samePciSites, selectedPci]);
+
+  const pciVisibleSiteIds = useMemo(() => {
+    return new Set(pciVisibleSites.map((site) => normalizeKey(site.SITEID)));
+  }, [pciVisibleSites]);
+
+  const mapVisibleSiteIds = useMemo(() => {
+    if (!selectedPci) return null;
+    const ids = new Set(pciVisibleSites.map((site) => normalizeKey(site.SITEID)));
+    if (sourcePciSite?.SITEID) {
+      ids.add(normalizeKey(sourcePciSite.SITEID));
+    }
+    return ids;
+  }, [pciVisibleSites, selectedPci, sourcePciSite]);
+
+  const pciLayerTitle = useMemo(() => {
+    if (pciLayerMode === "same-pci") return "Source / All Same-PCI Sites";
+    if (pciLayerMode === "neighbours") return "Source / Same-PCI Neighbours";
+    if (pciLayerMode === "collision") return "PCI Collision View";
+    if (pciLayerMode === "confusion") return "PCI Confusion View";
+    if (pciLayerMode === "both") return "PCI Collision + Confusion";
+    return "Source / Same-PCI Sites";
+  }, [pciLayerMode]);
+
+  const pciLayerSubtitle = useMemo(() => {
+    if (pciLayerMode === "same-pci") return `${pciVisibleSites.length} shown from ${samePciSites.length} other same-PCI site(s)`;
+    if (pciLayerMode === "neighbours") return `${pciVisibleSites.length} inferred same-PCI neighbour site(s)`;
+    if (pciLayerMode === "collision") return `${pciVisibleSites.length} site(s) shown for potential collision`;
+    if (pciLayerMode === "confusion") return `${pciVisibleSites.length} site(s) shown for potential confusion`;
+    if (pciLayerMode === "both") return `${pciVisibleSites.length} risk site(s) shown`;
+    return `${pciVisibleSites.length} site(s) shown`;
+  }, [pciLayerMode, pciVisibleSites.length, samePciSites.length]);
+
+  const pciLayerModeOptions = useMemo(() => {
+    const collisionCount = inferredSamePciCellCount > 0 ? inferredSamePciSites.length : 0;
+    const confusionCount = inferredSamePciCellCount >= 2 ? inferredSamePciSites.length : 0;
+    return pciLayerModes.map((mode) => {
+      const count =
+        mode.value === "same-pci"
+          ? samePciSites.length
+          : mode.value === "neighbours"
+            ? inferredSamePciSites.length
+            : mode.value === "collision"
+              ? collisionCount
+              : mode.value === "confusion"
+                ? confusionCount
+                : Math.max(collisionCount, confusionCount);
+      return {
+        ...mode,
+        count,
+        disabled: mode.value !== "same-pci" && count === 0,
+      };
+    });
+  }, [inferredSamePciCellCount, inferredSamePciSites.length, samePciSites.length]);
+
+  useEffect(() => {
+    const key = `${selectedPci}|${selectedPciSiteId}`;
+    if (selectedPciKeyRef.current !== key) {
+      selectedPciKeyRef.current = key;
+      setPciLayerMode("same-pci");
+    }
+  }, [selectedPci, selectedPciSiteId]);
+
+  useEffect(() => {
+    const activeMode = pciLayerModeOptions.find((mode) => mode.value === pciLayerMode);
+    if (activeMode?.disabled) {
+      setPciLayerMode("same-pci");
+    }
+  }, [pciLayerMode, pciLayerModeOptions]);
+
+  const pciSummaryCards = useMemo(() => {
+    if (pciLayerMode === "collision") {
+      return [{ key: "collision", title: "PCI Collision", summary: pciCollisionSummary }];
+    }
+    if (pciLayerMode === "confusion") {
+      return [{ key: "confusion", title: "PCI Confusion", summary: pciConfusionSummary }];
+    }
+    if (pciLayerMode === "both") {
+      return [
+        { key: "collision", title: "PCI Collision", summary: pciCollisionSummary },
+        { key: "confusion", title: "PCI Confusion", summary: pciConfusionSummary },
+      ];
+    }
+    return [];
+  }, [pciCollisionSummary, pciConfusionSummary, pciLayerMode]);
 
   const sourcePciLabel = useMemo(() => {
     if (!sourcePciSite) return "";
@@ -1840,7 +2011,7 @@ export default function MapPage() {
   }, [filteredSites, showCells]);
 
   const worstCellMapItems = useMemo(() => {
-    if (!showWorstSites) return [];
+    if (!showWorstSites || selectedPci) return [];
 
     const isMatch = (left, right) => (
       left === right ||
@@ -1893,10 +2064,10 @@ export default function MapPage() {
         };
       })
       .filter(Boolean);
-  }, [showWorstSites, worstCells, filteredSites]);
+  }, [showWorstSites, selectedPci, worstCells, filteredSites]);
 
   const predictionMapItems = useMemo(() => {
-    if (!showPredictions) return [];
+    if (!showPredictions || selectedPci) return [];
 
     const isMatch = (left, right) => (
       left === right ||
@@ -1970,7 +2141,7 @@ export default function MapPage() {
         };
       })
       .filter(Boolean);
-  }, [displayPredictions, filteredSites, showPredictions]);
+  }, [displayPredictions, filteredSites, selectedPci, showPredictions]);
 
   useEffect(() => {
     if (!useDeckRendering) return;
@@ -2000,6 +2171,28 @@ export default function MapPage() {
     });
     map.fitBounds(bounds);
   }, [activeMapPanel, map, predictionMapItems, showPredictions]);
+
+  useEffect(() => {
+    if (!map || !window.google || !selectedPci || !sourcePciSite) return;
+    const bounds = new window.google.maps.LatLngBounds();
+    if (Number.isFinite(Number(sourcePciSite.lat)) && Number.isFinite(Number(sourcePciSite.lon))) {
+      bounds.extend({ lat: Number(sourcePciSite.lat), lng: Number(sourcePciSite.lon) });
+    }
+    pciVisibleSites.forEach((site) => {
+      if (Number.isFinite(Number(site.lat)) && Number.isFinite(Number(site.lon))) {
+        bounds.extend({ lat: Number(site.lat), lng: Number(site.lon) });
+      }
+    });
+    if (bounds.isEmpty()) return;
+    map.fitBounds(bounds, 80);
+    const listener = window.google.maps.event.addListenerOnce(map, "idle", () => {
+      if (map.getZoom() > 15) {
+        map.setZoom(15);
+      }
+      setZoomLevel(map.getZoom());
+    });
+    return () => window.google.maps.event.removeListener(listener);
+  }, [map, pciLayerMode, pciVisibleSites, selectedPci, sourcePciSite]);
 
   const center = useMemo(() => {
     if (mapData.length > 0) {
@@ -2639,7 +2832,7 @@ export default function MapPage() {
           ["LB Config", lbResult ? `Method: ${lbMethod}  |  ML Mode: ${lbMlMode}  |  Quantile: ${lbQuantile}` : "LB/WCF not run"],
           ["Alarm summary", alarmSummary ? `Open: ${formatNumber(alarmSummary.totalOpen)} | C:${alarmSummary.critical||0} M:${alarmSummary.major||0} m:${alarmSummary.minor||0} W:${alarmSummary.warning||0}` : `${formatNumber(alarms.length)} alarms loaded`],
           ["Data quality", `${formatNumber(totalSiteRows)} raw rows | ${formatNumber(missingCoordinateRows)} missing coords | ${coordinateCoverage}% plottable`],
-          ["Worst-cell method", COMBINED_RADIO_LABEL],
+          ["Worst-cell metric", selectedWorstMetricLabel],
           ["Active filters", activeFilters],
           ["Map layers", `Cells:${showCells?"ON":"OFF"} | Pred:${showPredictions?"ON":"OFF"} | Worst:${showWorstSites?"ON":"OFF"} | Alarms:${showAlarms?"ON":"OFF"}`],
         ],
@@ -2888,7 +3081,7 @@ export default function MapPage() {
       // PAGE 6 — Worst Cell Rankings
       // ═══════════════════════════════════════════════════════════════════
       doc.addPage("a4","landscape");
-      pageTitle("Worst Cell Rankings", `Method: ${COMBINED_RADIO_LABEL}  \u00b7  ${formatNumber(worstCellMapItems.length)} cells ranked`);
+      pageTitle("Worst Cell Rankings", `Metric: ${selectedWorstMetricLabel}  \u00b7  ${formatNumber(worstCellMapItems.length)} cells ranked`);
 
       if (!selectedMetric) {
         noDataBox(margin, 68, contentWidth, 60,
@@ -2906,7 +3099,7 @@ export default function MapPage() {
         card(margin+3*(wcSumW+5),wcSumY,wcSumW,wcSumH,"Minor",       formatNumber(worstCellMapItems.filter(w=>w.severity==="MINOR").length),  "#D97706");
 
         let wcY=wcSumY+wcSumH+12;
-        sectionHeading(`Worst Cells \u2014 ${COMBINED_RADIO_LABEL}`, margin, wcY, contentWidth, "#EA580C"); wcY+=24;
+        sectionHeading(`Worst Cells \u2014 ${selectedWorstMetricLabel}`, margin, wcY, contentWidth, "#EA580C"); wcY+=24;
         const wcCols=[30,90,110,110,70,60,contentWidth-30-90-110-110-70-60];
         table(
           ["Rank","Site","Cell","Metric","Value","Severity","Action / Notes"],
@@ -3286,9 +3479,15 @@ export default function MapPage() {
   const siteHasSelectedPci = useCallback((site) => {
     return Boolean(
       selectedPci &&
-      site?.cells?.some((cell) => normalizePci(cell.PCI) === normalizePci(selectedPci))
+      pciVisibleSiteIds.has(normalizeKey(site?.SITEID))
     );
-  }, [selectedPci]);
+  }, [pciVisibleSiteIds, selectedPci]);
+
+  const cellMatchesVisibleSelectedPci = useCallback((cell) => {
+    if (!selectedPci || normalizePci(cell?.PCI) !== normalizePci(selectedPci)) return false;
+    if (selectedPciSiteId && normalizeKey(cell?.SITEID) === normalizeKey(selectedPciSiteId)) return true;
+    return pciVisibleSiteIds.has(normalizeKey(cell?.SITEID));
+  }, [pciVisibleSiteIds, selectedPci, selectedPciSiteId]);
 
   const getSiteMarkerIcon = useCallback((site, selected = false) => {
     const hasWorst = siteHasWorstCell(site);
@@ -3302,20 +3501,22 @@ export default function MapPage() {
     const hasAlarm = severityOrder[alarmSeverity] > 0;
     const pciMode = Boolean(selectedPci);
     const isSource = selectedPci && normalizeKey(site?.SITEID) === normalizeKey(selectedPciSiteId);
-    const shouldHighlight = hasAlarm || hasWorst || hasSelectedPci || hasWorstSite || hasPrediction;
-    const fillColor = hasAlarm
-      ? severityMarkerColors[alarmSeverity]
-      : isSource
+    const shouldHighlight = isSource || hasSelectedPci || hasAlarm || hasWorst || hasWorstSite || hasPrediction;
+    const fillColor = pciMode
+      ? isSource
         ? "#FACC15"
         : hasSelectedPci
+          ? "#DC2626"
+          : "#16A34A"
+      : hasAlarm
+      ? severityMarkerColors[alarmSeverity]
+      : hasSelectedPci
         ? "#DC2626"
         : hasWorstSite
           ? "#EA580C"
           : hasPrediction
             ? "#7C3AED"
-            : pciMode
-              ? "#16A34A"
-              : selected
+            : selected
                 ? "#3B82F6"
                 : "#FFFFFF";
     return {
@@ -3341,6 +3542,7 @@ export default function MapPage() {
     const pciMode = Boolean(selectedPci);
     const isSource = selectedPci && normalizeKey(site?.SITEID) === normalizeKey(selectedPciSiteId);
 
+    if (pciMode) return hexToRgba(isSource ? "#FACC15" : hasSelectedPci ? "#DC2626" : "#16A34A", 245);
     if (hasAlarm) return hexToRgba(severityMarkerColors[alarmSeverity], 255);
     if (isSource) return hexToRgba("#FACC15", 255);
     if (hasSelectedPci) return hexToRgba("#DC2626", 255);
@@ -3354,7 +3556,10 @@ export default function MapPage() {
   const getCellOverlayColors = useCallback((cell, layer, sector) => {
     const baseColors = getColorBySector(sector, layer);
     const isWorstCell = showWorstSites && worstCellLookup.has(normalizeKey(cell.Cell_Name));
-    const isSamePci = selectedPci && normalizePci(cell.PCI) === normalizePci(selectedPci);
+    const isSamePci =
+      selectedPci &&
+      normalizePci(cell.PCI) === normalizePci(selectedPci) &&
+      mapVisibleSiteIds?.has(normalizeKey(cell.SITEID));
     const isSourcePciCell =
       isSamePci &&
       selectedPciSiteId &&
@@ -3377,7 +3582,7 @@ export default function MapPage() {
     }
 
     return baseColors;
-  }, [getColorBySector, showWorstSites, worstCellLookup, selectedPci, selectedPciSiteId]);
+  }, [getColorBySector, showWorstSites, worstCellLookup, selectedPci, selectedPciSiteId, mapVisibleSiteIds]);
 
   // Render site markers
   useEffect(() => {
@@ -3484,7 +3689,7 @@ export default function MapPage() {
       infoWindowRef.current.setPosition({ lat: site.lat, lng: site.lon });
       infoWindowRef.current.open(map);
     }
-  }, [map, zoomLevel, getSiteMarkerIcon, selectedPci, siteHasSelectedPci, createSiteInfoWindow]);
+  }, [map, zoomLevel, getSiteMarkerIcon, selectedPci, siteHasSelectedPci, createSiteInfoWindow, filteredSites]);
 
   const loadSelectedSiteDetails = useCallback(async (site) => {
     if (!selectedFileId || !site) return;
@@ -3607,15 +3812,15 @@ export default function MapPage() {
       getLineWidth: (cell) => {
         const selected =
           selectedCell?.Cell_Name === cell.Cell_Name ||
-          (selectedPci && normalizePci(cell.PCI) === normalizePci(selectedPci));
+          cellMatchesVisibleSelectedPci(cell);
         return selected ? 2.5 : 1.2;
       },
       lineWidthUnits: "pixels",
       updateTriggers: {
         getPolygon: [zoomLevel, baseRadius, cellRadiusScale],
-        getFillColor: [selectedPci, worstCells.length],
-        getLineColor: [selectedPci, worstCells.length],
-        getLineWidth: [selectedCell?.Cell_Name, selectedPci],
+        getFillColor: [selectedPci, pciLayerMode, worstCells.length],
+        getLineColor: [selectedPci, pciLayerMode, worstCells.length],
+        getLineWidth: [selectedCell?.Cell_Name, selectedPci, pciLayerMode],
       },
       onClick: ({ object, coordinate }) => {
         if (!object) return;
@@ -3839,6 +4044,7 @@ export default function MapPage() {
     createWorstCellInfoWindow,
     getCellLayer,
     getCellSector,
+    cellMatchesVisibleSelectedPci,
   ]);
 
   // Render cells
@@ -3863,12 +4069,8 @@ export default function MapPage() {
 
     sitesToShow.forEach((site) => {
       const sortedCells = [...site.cells].sort((a, b) => {
-        const aSelectedPci =
-          selectedPci &&
-          normalizePci(a.PCI) === normalizePci(selectedPci);
-        const bSelectedPci =
-          selectedPci &&
-          normalizePci(b.PCI) === normalizePci(selectedPci);
+        const aSelectedPci = cellMatchesVisibleSelectedPci(a);
+        const bSelectedPci = cellMatchesVisibleSelectedPci(b);
         if (aSelectedPci !== bSelectedPci) {
           return aSelectedPci ? 1 : -1;
         }
@@ -3892,9 +4094,7 @@ export default function MapPage() {
         const frequencyScale = getBandFrequencyScale(cell);
         const radius = Math.max(4, baseRadius * layerMultiplier * frequencyScale);
         const colors = getCellOverlayColors(cell, layer, sector);
-        const isSelectedPciCell =
-          selectedPci &&
-          normalizePci(cell.PCI) === normalizePci(selectedPci);
+        const isSelectedPciCell = cellMatchesVisibleSelectedPci(cell);
         const isWorstCell = worstCellLookup.has(normalizeKey(cell.Cell_Name));
         const zIndex = isSelectedPciCell ? 30000 : isWorstCell ? 20000 : getZIndexByLayer(layer);
 
@@ -3949,9 +4149,7 @@ export default function MapPage() {
             const pLayer = getCellLayer(p.cellData);
             const pSector = getCellSector(p.cellData);
             const pColors = getCellOverlayColors(p.cellData, pLayer, pSector);
-            const pIsSelectedPci =
-              selectedPci &&
-              normalizePci(p.cellData.PCI) === normalizePci(selectedPci);
+            const pIsSelectedPci = cellMatchesVisibleSelectedPci(p.cellData);
             const pIsWorstCell = worstCellLookup.has(normalizeKey(p.cellData.Cell_Name));
             const pZIndex = pIsSelectedPci ? 30000 : pIsWorstCell ? 20000 : getZIndexByLayer(pLayer);
 
@@ -4021,7 +4219,7 @@ export default function MapPage() {
         cellPolygonsRef.current.set(cellKey, polygon);
       });
     });
-  }, [map, showCells, zoomLevel, filteredSites, getBaseRadiusByZoom, getCellLayer, getCellSector, getLayerMultiplier, getCellOverlayColors, getZIndexByLayer, createCellTriangle, createCellInfoWindow]);
+  }, [map, showCells, zoomLevel, filteredSites, getBaseRadiusByZoom, getCellLayer, getCellSector, getLayerMultiplier, getCellOverlayColors, getZIndexByLayer, createCellTriangle, createCellInfoWindow, cellMatchesVisibleSelectedPci]);
 
   useEffect(() => {
     pciMarkersRef.current.forEach((marker) => marker.setMap(null));
@@ -4626,7 +4824,7 @@ export default function MapPage() {
                       compact
                     />
                     <div className="mt-2 rounded-lg bg-orange-50 px-2 py-1.5 text-[11px] font-bold text-orange-700">
-                      Ranking method: Combined radio KPI score.
+                      Ranking method: selected single KPI.
                     </div>
                   </div>
                   <div className="mb-2 flex items-center justify-between gap-2">
@@ -4661,7 +4859,7 @@ export default function MapPage() {
                   <div className="mt-3 rounded-lg bg-white p-2">
                     <div className="mb-2 text-xs font-bold uppercase text-red-700">Worst Cells On Map</div>
                     {worstCells.length === 0 ? (
-                      <p className="text-xs text-slate-500">Worst cells use combined radio KPI scoring by default.</p>
+                      <p className="text-xs text-slate-500">Select one KPI metric to calculate worst cells.</p>
                     ) : (
                       <div className="max-h-44 space-y-2 overflow-y-auto pr-1">
                         {worstCells.slice(0, 10).map((row) => (
@@ -4997,13 +5195,13 @@ export default function MapPage() {
               <div className="rounded-2xl border border-red-500/30 bg-red-950/30 p-4 shadow-lg">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <div className="text-[11px] font-bold uppercase tracking-wider text-red-400">PCI Source / Neighbours</div>
+                    <div className="text-[11px] font-bold uppercase tracking-wider text-red-400">{pciLayerTitle}</div>
                     <div className="text-xl font-black text-white">PCI {selectedPci}</div>
                     <div className="text-xs text-slate-400 mt-0.5">
                       Source {selectedPciSiteId || "-"} • {selectedPciCount} matching cell(s)
                     </div>
                     <div className="text-xs text-slate-400">
-                      {pciNeighbours.length} neighbour site(s) with same PCI
+                      {pciLayerSubtitle}
                     </div>
                   </div>
                   <button
@@ -5017,9 +5215,52 @@ export default function MapPage() {
                     Clear
                   </button>
                 </div>
-                {pciNeighbours.length > 0 && (
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  {pciLayerModeOptions.map((mode) => (
+                    <button
+                      key={mode.value}
+                      type="button"
+                      disabled={mode.disabled}
+                      onClick={() => {
+                        if (!mode.disabled) setPciLayerMode(mode.value);
+                      }}
+                      className={`rounded-lg border px-2.5 py-1.5 text-[11px] font-black transition-colors ${
+                        pciLayerMode === mode.value
+                          ? "border-red-400 bg-red-500/20 text-white"
+                          : mode.disabled
+                            ? "cursor-not-allowed border-slate-800 bg-slate-950/60 text-slate-600"
+                          : "border-slate-700 bg-slate-900/70 text-slate-400 hover:border-red-500/40 hover:text-slate-200"
+                      }`}
+                    >
+                      {mode.label} ({mode.count})
+                    </button>
+                  ))}
+                </div>
+                {pciSummaryCards.length > 0 && (
+                  <div className={`mt-3 grid gap-2 ${pciSummaryCards.length === 1 ? "grid-cols-1" : "grid-cols-2"}`}>
+                    {pciSummaryCards.map((card) => (
+                      <button
+                        key={card.key}
+                        type="button"
+                        onClick={() => setPciLayerMode(card.key)}
+                        className={`rounded-xl border px-3 py-2 text-left ${
+                          card.summary.severity === "risk"
+                            ? "border-red-500/40 bg-red-900/40"
+                            : card.summary.severity === "watch"
+                              ? "border-amber-500/40 bg-amber-900/30"
+                              : "border-emerald-500/30 bg-emerald-900/20"
+                        }`}
+                      >
+                        <div className="text-[10px] font-black uppercase tracking-wider text-slate-400">{card.title}</div>
+                        <div className="mt-0.5 text-xs font-black text-white">{card.summary.status}</div>
+                        <div className="mt-1 text-[11px] text-slate-400">{card.summary.detail}</div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {pciVisibleSites.length > 0 && (
                   <div className="mt-3 max-h-44 space-y-2 overflow-y-auto pr-1">
-                    {pciNeighbours.slice(0, 8).map((site, index) => (
+                    {pciVisibleSites.slice(0, 8).map((site, index) => (
                       <button
                         key={site.SITEID}
                         type="button"
@@ -5028,17 +5269,22 @@ export default function MapPage() {
                       >
                         <div className="flex items-center justify-between gap-2">
                           <span className="truncate text-xs font-bold text-red-300">
-                            Neighbour {index + 1}: {site.SITEID}
+                            {site.inferredNeighbour ? "Same-PCI Neighbour" : "Same-PCI Site"} {index + 1}: {site.SITEID}
                           </span>
                           <span className="text-xs font-bold text-red-400">
                             {site.distanceKm == null ? "-" : `${site.distanceKm.toFixed(2)} km`}
                           </span>
                         </div>
                         <div className="mt-1 text-[11px] text-slate-400">
-                          {site.matchingPciCells.length} same-PCI cell(s)
+                          {site.matchingPciCells.length} same-PCI cell(s) • {site.inferredNeighbour ? "inferred neighbour" : "reuse only"}
                         </div>
                       </button>
                     ))}
+                  </div>
+                )}
+                {pciVisibleSites.length === 0 && (
+                  <div className="mt-3 rounded-xl border border-slate-800 bg-slate-900/70 px-3 py-2 text-xs font-semibold text-slate-400">
+                    No site matches this PCI view.
                   </div>
                 )}
               </div>
@@ -5108,7 +5354,7 @@ export default function MapPage() {
                     compact
                   />
                   <div className="mt-2 rounded-lg border border-orange-500/20 bg-orange-950/20 px-2 py-1.5 text-[11px] font-bold text-orange-200">
-                    Ranking method: Combined radio KPI score.
+                    Ranking method: selected single KPI.
                   </div>
                 </div>
                 <div className="flex items-center justify-between">
@@ -5269,7 +5515,8 @@ export default function MapPage() {
             selectedPci={selectedPci}
             sourcePciLabel={sourcePciLabel}
             selectedPciCount={selectedPciCount}
-            pciNeighbourCount={pciNeighbours.length}
+            samePciSiteCount={pciVisibleSites.length}
+            pciLayerLabel={pciLayerTitle}
           />
 
           {/* Map controls moved into the Filter and Analytics panels. */}
@@ -5293,7 +5540,7 @@ export default function MapPage() {
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <div className="text-xs font-semibold uppercase text-red-600">
-                      PCI Source / Neighbours
+                      {pciLayerTitle}
                     </div>
                     <div className="text-lg font-black text-red-900">
                       PCI {selectedPci}
@@ -5302,7 +5549,7 @@ export default function MapPage() {
                       Source {selectedPciSiteId || "-"} • {selectedPciCount} matching cell(s)
                     </div>
                     <div className="text-xs text-gray-500">
-                      {pciNeighbours.length} neighbour site(s) with same PCI
+                      {pciLayerSubtitle}
                     </div>
                   </div>
                   <button
@@ -5316,9 +5563,52 @@ export default function MapPage() {
                     Clear
                   </button>
                 </div>
-                {pciNeighbours.length > 0 && (
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  {pciLayerModeOptions.map((mode) => (
+                    <button
+                      key={mode.value}
+                      type="button"
+                      disabled={mode.disabled}
+                      onClick={() => {
+                        if (!mode.disabled) setPciLayerMode(mode.value);
+                      }}
+                      className={`rounded-lg border px-2.5 py-1.5 text-[11px] font-black transition-colors ${
+                        pciLayerMode === mode.value
+                          ? "border-red-300 bg-red-100 text-red-900"
+                          : mode.disabled
+                            ? "cursor-not-allowed border-gray-100 bg-gray-50 text-gray-300"
+                          : "border-gray-200 bg-white text-gray-500 hover:border-red-200 hover:text-red-700"
+                      }`}
+                    >
+                      {mode.label} ({mode.count})
+                    </button>
+                  ))}
+                </div>
+                {pciSummaryCards.length > 0 && (
+                  <div className={`mt-3 grid gap-2 ${pciSummaryCards.length === 1 ? "grid-cols-1" : "grid-cols-2"}`}>
+                    {pciSummaryCards.map((card) => (
+                      <button
+                        key={card.key}
+                        type="button"
+                        onClick={() => setPciLayerMode(card.key)}
+                        className={`rounded-lg border px-3 py-2 text-left ${
+                          card.summary.severity === "risk"
+                            ? "border-red-200 bg-red-100"
+                            : card.summary.severity === "watch"
+                              ? "border-amber-200 bg-amber-50"
+                              : "border-emerald-200 bg-emerald-50"
+                        }`}
+                      >
+                        <div className="text-[10px] font-black uppercase tracking-wider text-gray-500">{card.title}</div>
+                        <div className="mt-0.5 text-xs font-black text-gray-900">{card.summary.status}</div>
+                        <div className="mt-1 text-[11px] text-gray-500">{card.summary.detail}</div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {pciVisibleSites.length > 0 && (
                   <div className="mt-3 max-h-40 space-y-2 overflow-y-auto pr-1">
-                    {pciNeighbours.slice(0, 8).map((site, index) => (
+                    {pciVisibleSites.slice(0, 8).map((site, index) => (
                       <button
                         key={site.SITEID}
                         type="button"
@@ -5327,17 +5617,22 @@ export default function MapPage() {
                       >
                         <div className="flex items-center justify-between gap-2">
                           <span className="truncate text-xs font-bold text-red-900">
-                            Neighbour {index + 1}: {site.SITEID}
+                            {site.inferredNeighbour ? "Same-PCI Neighbour" : "Same-PCI Site"} {index + 1}: {site.SITEID}
                           </span>
                           <span className="text-xs font-bold text-red-700">
                             {site.distanceKm == null ? "-" : `${site.distanceKm.toFixed(2)} km`}
                           </span>
                         </div>
                         <div className="mt-1 text-[11px] text-gray-500">
-                          {site.matchingPciCells.length} same-PCI cell(s)
+                          {site.matchingPciCells.length} same-PCI cell(s) • {site.inferredNeighbour ? "inferred neighbour" : "reuse only"}
                         </div>
                       </button>
                     ))}
+                  </div>
+                )}
+                {pciVisibleSites.length === 0 && (
+                  <div className="mt-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs font-semibold text-gray-500">
+                    No site matches this PCI view.
                   </div>
                 )}
               </div>
