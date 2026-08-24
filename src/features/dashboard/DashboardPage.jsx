@@ -94,6 +94,7 @@ export default function DashboardPage() {
   const [importingThresholds, setImportingThresholds] = useState(false);
   const [refreshingData, setRefreshingData] = useState(false);
   const [isScopeHydrated, setIsScopeHydrated] = useState(false);
+  const [isDashboardScopeReady, setIsDashboardScopeReady] = useState(false);
   const [thresholdTransferMessage, setThresholdTransferMessage] =
     useState(null);
   const selectedDashboardFileId = String(selectedFileId || "");
@@ -460,6 +461,7 @@ export default function DashboardPage() {
 
     if (!latestFileId) {
       hasReconciledDashboardScopeRef.current = true;
+      setIsDashboardScopeReady(true);
       if (selectedDashboardFileId) {
         setSelectedDashboardFileId("");
       }
@@ -469,6 +471,7 @@ export default function DashboardPage() {
     if (!selectedDashboardFileId) {
       hasReconciledDashboardScopeRef.current = true;
       setSelectedDashboardFileId(latestFileId);
+      setIsDashboardScopeReady(true);
       return;
     }
 
@@ -479,6 +482,7 @@ export default function DashboardPage() {
       setSelectedDashboardFileId(latestFileId);
     }
     hasReconciledDashboardScopeRef.current = true;
+    setIsDashboardScopeReady(true);
   }, [dashboardFileOptions, selectedDashboardFileId]);
 
   useEffect(() => {
@@ -490,13 +494,14 @@ export default function DashboardPage() {
         setDashboardFileOptions(files);
       } else {
         setSelectedDashboardFileId("");
+        setIsDashboardScopeReady(true);
       }
     };
     loadDashboardFiles();
   }, []);
 
   useEffect(() => {
-    if (!isScopeHydrated) return;
+    if (!isScopeHydrated || !isDashboardScopeReady) return;
     const fileId = selectedDashboardFileId || undefined;
     const scopeKey = getDashboardScopeCacheKey(selectedDashboardFileId);
     const cached = dashboardRuntimeCacheByScope[scopeKey];
@@ -531,7 +536,7 @@ export default function DashboardPage() {
       setDynamicPerformanceEntries([]);
       handleGetPerformanceData(undefined);
     }
-  }, [selectedDashboardFileId, loadDynamicPerformanceData, loadThresholdRulesForDynamicMetrics, isScopeHydrated]);
+  }, [selectedDashboardFileId, loadDynamicPerformanceData, loadThresholdRulesForDynamicMetrics, isScopeHydrated, isDashboardScopeReady]);
 
   useEffect(() => {
     const scopeKey = getDashboardScopeCacheKey(selectedDashboardFileId);
