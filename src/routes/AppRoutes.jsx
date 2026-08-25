@@ -1,15 +1,16 @@
 import { Routes, Route, Navigate } from "react-router-dom";
-import DashboardPage from "../features/dashboard/DashboardPage";
-import MapPage from "../features/map/MapPage";
-import UploadsPage from "../features/uploads/UploadsPage";
-import WorstCell from "../features/worst_cell/WorstCell";
-import AlarmsPage from "../features/alarms/AlarmsPage";
-import SitesPage from "../features/sites/SitesPage";
-import KpiView from "../features/kpi/KpiView";
-import RcaPage from "../features/recommendation/recommendation";
-import ThresholdRulesPage from "../features/threshold_rules/ThresholdRulesPage";
-import ValidationReportPage from "../features/validation_report/ValidationReportPage";
-import LoginPage from "../features/auth/LoginPage";
+import DashboardPage from "@/pages/DashboardPage";
+import MapPage from "@/pages/MapPage";
+import UploadsPage from "@/pages/UploadsPage";
+import WorstCell from "@/pages/WorstCell";
+import AlarmsPage from "@/pages/AlarmsPage";
+import SitesPage from "@/pages/SitesPage";
+import KpiView from "@/pages/KpiView";
+import RcaPage from "@/pages/RecommendationPage";
+import ThresholdRulesPage from "@/pages/ThresholdRulesPage";
+import ValidationReportPage from "@/pages/ValidationReportPage";
+import LoginPage from "@/pages/LoginPage";
+import CreateAccountPage from "@/pages/CreateAccountPage";
 import ProtectedRoute from "./ProtectedRoute";
 
 export default function AppRoutes() {
@@ -30,6 +31,7 @@ export default function AppRoutes() {
         <Route path="/sites" element={<SitesPage />} />
         <Route path="/threshold-rules" element={<ThresholdRulesPage />} />
         <Route path="/validation-report" element={<ValidationReportPage />} />
+        <Route path="/accounts" element={<CreateAccountPage />} />
       </Route>
 
       {/* Catch-all redirect to home */}

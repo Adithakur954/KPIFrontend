@@ -9,7 +9,6 @@ export default function MapSiteLegend({
   sites = [],
   selectedSite,
   hoveredSite,
-  sidebarOpen,
   onSiteClick,
   onSiteHover,
   onSiteLeave,

@@ -1,5 +1,5 @@
 import { AlertTriangle, Eye, EyeOff, FileText, Filter, Layers, Sparkles } from "lucide-react";
-import ToggleSwitch from "../../../components/common/ToggleSwitch";
+import ToggleSwitch from "@/shared/components/common/ToggleSwitch";
 import LbPredictionControls from "./LbPredictionControls";
 import MapKpiSelector from "./MapKpiSelector";
 
@@ -33,10 +33,6 @@ export default function MapFilterPanel({
   onToggleWorstSites,
   showPredictions,
   onTogglePredictions,
-  predictionSummary,
-  predictionItems = [],
-  onPredictionClick,
-  formatNumber = (value) => value,
   lbPredictionControlProps,
   showAlarms,
   onToggleAlarms,

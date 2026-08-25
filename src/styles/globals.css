@@ -1,8 +1,25 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
 body {
-  font-family: 'Inter', sans-serif;
-  background-color: #ffffff;
+  font-family: "Stack Sans Notch", sans-serif, "Roboto Mono";
+}
+
+body.kpi-pdf-exporting [data-kpi-pdf-card="true"] {
+  box-shadow: none !important;
+  border: 1px solid #e5e7eb !important;
+  border-radius: 12px !important;
+  overflow: hidden !important;
+}
+
+body.kpi-pdf-exporting [data-kpi-pdf-card="true"] [data-slot="card-header"] {
+  margin-bottom: 0 !important;
+  padding: 14px 16px 8px !important;
+}
+
+body.kpi-pdf-exporting [data-kpi-pdf-card="true"] [data-slot="card-content"] {
+  padding: 8px 14px 14px !important;
+}
+
+body.kpi-pdf-exporting [data-kpi-pdf-card="true"] [data-kpi-pdf-hide="true"] {
+  display: none !important;
 }

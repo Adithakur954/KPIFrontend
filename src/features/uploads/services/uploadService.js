@@ -1,4 +1,4 @@
-import { apiFetch, API_BASE_URL } from "../../../services/apiClient";
+import { apiFetch, API_BASE_URL } from "@/shared/api/apiClient";
 
 const ENDPOINTS = {
   KPI_UPLOAD: import.meta.env.VITE_UPLOAD_KPI_ENDPOINT || "upload/kpi",

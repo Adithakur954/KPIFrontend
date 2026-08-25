@@ -1,4 +1,4 @@
-import { apiFetch } from "../../../services/apiClient";
+import { apiFetch } from "@/shared/api/apiClient";
 
 export async function loginAPI(email, password) {
   try {

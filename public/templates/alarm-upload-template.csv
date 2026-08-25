@@ -1,0 +1,2 @@
+Circle,EnodeB ID,Name,Alarm Number,Alarm Text,Supplementry Information,Severity,Alarm Time,Standard Aging,Alarm Time2,Date2,AgeingFormula,GPVS
+MUM,PLMN-PLMN/MRBTS-601013,EMU_TD30_FD15_HPSC1013,9047,NE3SWS AGENT NOT RESPONDING TO REQUESTS,No route to host,Critical,2024-10-08 11:52:58,Less Than 24 Hrs,2024-10-08 11:52:58,2024-10-08,0,#N/A

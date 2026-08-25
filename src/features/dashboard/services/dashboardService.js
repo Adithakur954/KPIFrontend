@@ -1,4 +1,4 @@
-import { apiFetch, API_BASE_URL } from "../../../services/apiClient";
+import { apiFetch, API_BASE_URL } from "@/shared/api/apiClient";
 
 async function getRequest(endpoint, fileId) {
   try {

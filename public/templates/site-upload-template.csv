@@ -1,0 +1,2 @@
+Cell_Name,SI_CI,EGCI,SuNetwork_ID,SITEID,Site_Name,Cell_ID,SEC_ID,Sector,lon,lat,TAC,PCI,AZIMUTH,Antenna_Height,M_tilt,E_tilt,TX_RX,EARFCN,Band,Technology,Region,Cluster
+SITE_A_L18_1,1001-101,404010000001001,MUM,1001,SITE_A,101,1,1,72.8777,19.0760,12001,321,40,30,2,4,2T2R,1850,L18,LTE,Mumbai,Cluster_A
