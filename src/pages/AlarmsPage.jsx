@@ -609,7 +609,6 @@ export default function AlarmsPage() {
             </div>
           )}
         </div>
-        </div>
           </>
         )}
 
@@ -661,6 +660,7 @@ export default function AlarmsPage() {
           </div>
         </div>
       )}
+    </div>
     </div>
   );
 }
