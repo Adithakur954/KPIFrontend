@@ -84,9 +84,12 @@ export async function getkpi17Data(fileId) {
   return getKpiData("kpi/csfb-success-rate", fileId);
 }
 
-export async function fetchKpiUploadHistory() {
+export async function fetchKpiUploadHistory(companyId) {
   try {
-    const response = await apiFetch("upload/uploads/history", { method: "GET" });
+    const response = await apiFetch("upload/uploads/history", {
+      method: "GET",
+      query: companyId ? { companyId } : undefined,
+    });
     const uploads = Array.isArray(response?.data) ? response.data : [];
 
     const kpiUploads = uploads.filter((upload) =>

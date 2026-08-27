@@ -12,6 +12,7 @@ import {
   createUserAccount,
   fetchUsers,
 } from "@/shared/api/userService";
+import { fetchCompanies } from "@/shared/api/companyService";
 import { useAuth } from "@/shared/context/AuthContext";
 
 const emptyForm = {
@@ -35,6 +36,7 @@ function statusClasses(status) {
 export default function CreateAccountPage() {
   const { user } = useAuth();
   const [users, setUsers] = useState([]);
+  const [companies, setCompanies] = useState([]);
   const [form, setForm] = useState(emptyForm);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -52,6 +54,12 @@ export default function CreateAccountPage() {
     });
   }, [users]);
 
+  const companyById = useMemo(() => {
+    const map = new Map();
+    companies.forEach((company) => map.set(Number(company.id), company));
+    return map;
+  }, [companies]);
+
   useEffect(() => {
     if (isSuperAdmin) {
       loadUsers();
@@ -62,11 +70,19 @@ export default function CreateAccountPage() {
 
   async function loadUsers() {
     setLoading(true);
-    const response = await fetchUsers();
-    if (response?.success) {
-      setUsers(Array.isArray(response.data) ? response.data : []);
+    const [usersResponse, companiesResponse] = await Promise.all([
+      fetchUsers(),
+      fetchCompanies(),
+    ]);
+    if (usersResponse?.success) {
+      setUsers(Array.isArray(usersResponse.data) ? usersResponse.data : []);
     } else {
-      showMessage(response?.message || "Failed to load accounts.", "error");
+      showMessage(usersResponse?.message || "Failed to load accounts.", "error");
+    }
+    if (companiesResponse?.success) {
+      setCompanies(Array.isArray(companiesResponse.data) ? companiesResponse.data : []);
+    } else {
+      showMessage(companiesResponse?.message || "Failed to load companies.", "error");
     }
     setLoading(false);
   }
@@ -210,16 +226,20 @@ export default function CreateAccountPage() {
 
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Company ID
+                  Company
                 </label>
-                <input
-                  type="number"
-                  min="1"
+                <select
                   value={form.companyId}
                   onChange={(event) => updateField("companyId", event.target.value)}
-                  placeholder="Optional"
                   className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                />
+                >
+                  <option value="">No company</option>
+                  {companies.map((company) => (
+                    <option key={company.id} value={company.id}>
+                      {company.companyName}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div className="grid gap-4 sm:grid-cols-2">
@@ -233,6 +253,7 @@ export default function CreateAccountPage() {
                     className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
                   >
                     <option value="USER">User</option>
+                    <option value="ADMIN">Admin</option>
                     <option value="SUPER_ADMIN">Super Admin</option>
                   </select>
                 </div>
@@ -312,7 +333,7 @@ export default function CreateAccountPage() {
                           </span>
                         </td>
                         <td className="px-4 py-3 text-slate-600">
-                          {account.companyId || "-"}
+                          {companyById.get(Number(account.companyId))?.companyName || account.companyId || "-"}
                         </td>
                         <td className="px-4 py-3">
                           <span

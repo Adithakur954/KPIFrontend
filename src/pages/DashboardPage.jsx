@@ -20,11 +20,14 @@ import {
   Upload,
   Minus,
   RefreshCw,
+  Building2,
 } from "lucide-react";
 import {
   exportThresholdWorkbook,
   getDashboardData,
+  getDashboardDataByCompany,
   getPerformanceData,
+  getPerformanceDataByCompany,
   getThresholdSetting,
   importThresholdWorkbook,
   postThresholdSetting,
@@ -35,6 +38,8 @@ import {
 } from "@/features/kpi/services/kpiService";
 import { fetchThresholdRules } from "@/features/threshold_rules/services/thresholdRuleService";
 import UserContext from "@/shared/context/FileSelectionContext";
+import { useAuth } from "@/shared/context/AuthContext";
+import { fetchCompanies } from "@/shared/api/companyService";
 
 const THRESHOLD_STORAGE_PREFIX = "dashboardThresholdProfile";
 const THRESHOLD_OPERATOR_STORAGE_PREFIX = "dashboardThresholdOperators";
@@ -48,8 +53,8 @@ const THRESHOLD_OPERATOR_OPTIONS = [
 const THRESHOLD_OPERATOR_SET = new Set(
   THRESHOLD_OPERATOR_OPTIONS.map((item) => item.value),
 );
-const getDashboardScopeCacheKey = (fileId) =>
-  fileId ? `file:${String(fileId)}` : "all";
+const getDashboardScopeCacheKey = (fileId, companyId) =>
+  `${companyId ? `company:${String(companyId)}` : "company:all"}:${fileId ? `file:${String(fileId)}` : "all"}`;
 let dashboardRuntimeCacheByScope = {};
 
 function normalizeMetricName(value = "") {
@@ -72,6 +77,7 @@ function ruleGoodOperator(rule) {
 
 export default function DashboardPage() {
   const { selectedFileId, setSelectedFileId } = useContext(UserContext);
+  const { user } = useAuth();
   const [dashboardData, setDashboardData] = useState(null);
   const [performanceData, setPerformanceData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -83,6 +89,8 @@ export default function DashboardPage() {
     {},
   );
   const [dashboardFileOptions, setDashboardFileOptions] = useState([]);
+  const [companies, setCompanies] = useState([]);
+  const [selectedCompanyId, setSelectedCompanyId] = useState("");
   const [dynamicPerformanceEntries, setDynamicPerformanceEntries] = useState(
     [],
   );
@@ -99,6 +107,10 @@ export default function DashboardPage() {
     useState(null);
   const selectedDashboardFileId = String(selectedFileId || "");
   const setSelectedDashboardFileId = setSelectedFileId;
+  const isSuperAdmin = String(user?.role || "").toUpperCase() === "SUPER_ADMIN";
+  const effectiveCompanyId = isSuperAdmin
+    ? selectedCompanyId || undefined
+    : user?.companyId || undefined;
 
   const isInitialMount = useRef(true);
   const hasHydratedSelectionRef = useRef(false);
@@ -318,7 +330,9 @@ export default function DashboardPage() {
   async function handleGetDashboardData(fileId) {
     try {
       setLoading(true);
-      const res = await getDashboardData(fileId);
+      const res = effectiveCompanyId
+        ? await getDashboardDataByCompany(fileId, effectiveCompanyId)
+        : await getDashboardData(fileId);
       if (res?.success && res?.data) setDashboardData(res.data);
     } catch (error) {
       console.error("Error fetching dashboard data:", error);
@@ -329,7 +343,9 @@ export default function DashboardPage() {
 
   async function handleGetPerformanceData(fileId) {
     try {
-      const res = await getPerformanceData(fileId);
+      const res = effectiveCompanyId
+        ? await getPerformanceDataByCompany(fileId, effectiveCompanyId)
+        : await getPerformanceData(fileId);
       if (res?.success && res?.data) setPerformanceData(res.data);
     } catch (error) {
       console.error("Error fetching performance data:", error);
@@ -378,7 +394,7 @@ export default function DashboardPage() {
     } finally {
       setRefreshingData(false);
     }
-  }, [selectedDashboardFileId, loadDynamicPerformanceData]);
+  }, [selectedDashboardFileId, effectiveCompanyId, loadDynamicPerformanceData]);
 
   async function handleUpdateThresholdSetting() {
     try {
@@ -486,24 +502,39 @@ export default function DashboardPage() {
   }, [dashboardFileOptions, selectedDashboardFileId]);
 
   useEffect(() => {
+    if (!isSuperAdmin) return;
+    fetchCompanies().then((response) => {
+      if (response?.success) {
+        setCompanies(Array.isArray(response.data) ? response.data : []);
+      }
+    });
+  }, [isSuperAdmin]);
+
+  useEffect(() => {
     const loadDashboardFiles = async () => {
-      const response = await fetchKpiUploadHistory();
+      const response = await fetchKpiUploadHistory(effectiveCompanyId);
       hasLoadedDashboardFilesRef.current = true;
       if (response?.success) {
         const files = response.data || [];
         setDashboardFileOptions(files);
+        if (
+          selectedDashboardFileId &&
+          !files.some((file) => String(file.id) === String(selectedDashboardFileId))
+        ) {
+          setSelectedDashboardFileId("");
+        }
       } else {
         setSelectedDashboardFileId("");
         setIsDashboardScopeReady(true);
       }
     };
     loadDashboardFiles();
-  }, []);
+  }, [effectiveCompanyId]);
 
   useEffect(() => {
     if (!isScopeHydrated || !isDashboardScopeReady) return;
     const fileId = selectedDashboardFileId || undefined;
-    const scopeKey = getDashboardScopeCacheKey(selectedDashboardFileId);
+    const scopeKey = getDashboardScopeCacheKey(selectedDashboardFileId, effectiveCompanyId);
     const cached = dashboardRuntimeCacheByScope[scopeKey];
     if (cached) {
       isRestoringDashboardCacheRef.current = true;
@@ -536,10 +567,10 @@ export default function DashboardPage() {
       setDynamicPerformanceEntries([]);
       handleGetPerformanceData(undefined);
     }
-  }, [selectedDashboardFileId, loadDynamicPerformanceData, loadThresholdRulesForDynamicMetrics, isScopeHydrated, isDashboardScopeReady]);
+  }, [selectedDashboardFileId, effectiveCompanyId, loadDynamicPerformanceData, loadThresholdRulesForDynamicMetrics, isScopeHydrated, isDashboardScopeReady]);
 
   useEffect(() => {
-    const scopeKey = getDashboardScopeCacheKey(selectedDashboardFileId);
+    const scopeKey = getDashboardScopeCacheKey(selectedDashboardFileId, effectiveCompanyId);
     if (
       !dashboardData &&
       !performanceData &&
@@ -563,6 +594,7 @@ export default function DashboardPage() {
     };
   }, [
     selectedDashboardFileId,
+    effectiveCompanyId,
     dashboardData,
     performanceData,
     dynamicPerformanceEntries,
@@ -920,6 +952,29 @@ export default function DashboardPage() {
             </div>
 
             <div className="flex items-center gap-4">
+              {isSuperAdmin && (
+                <div className="flex flex-col">
+                  <label className="text-xs font-semibold text-slate-500 mb-1">
+                    Company Scope
+                  </label>
+                  <select
+                    value={selectedCompanyId}
+                    onChange={(event) => {
+                      setSelectedCompanyId(event.target.value);
+                      setSelectedDashboardFileId("");
+                      hasReconciledDashboardScopeRef.current = false;
+                    }}
+                    className="min-w-[240px] px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white text-slate-700"
+                  >
+                    <option value="">All companies</option>
+                    {companies.map((company) => (
+                      <option key={company.id} value={String(company.id)}>
+                        {company.companyName}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div className="flex flex-col">
                 <label className="text-xs font-semibold text-slate-500 mb-1">
                   KPI File Scope
@@ -973,6 +1028,14 @@ export default function DashboardPage() {
         <div className="bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-700">
           Data scope:{" "}
           <span className="font-semibold">
+            {isSuperAdmin
+              ? selectedCompanyId
+                ? companies.find((company) => String(company.id) === String(selectedCompanyId))?.companyName || `Company ${selectedCompanyId}`
+                : "All companies"
+              : user?.companyId
+                ? `Company ${user.companyId}`
+                : "Assigned company"}
+            {" / "}
             {selectedDashboardFileId
               ? `File #${selectedDashboardFileId} - ${
                   dashboardFileOptions.find(

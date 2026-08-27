@@ -1,10 +1,13 @@
 import { apiFetch, API_BASE_URL } from "@/shared/api/apiClient";
 
-async function getRequest(endpoint, fileId) {
+async function getRequest(endpoint, fileId, companyId) {
   try {
+    const query = {};
+    if (fileId) query.fileId = fileId;
+    if (companyId) query.companyId = companyId;
     return await apiFetch(endpoint, {
       method: "GET",
-      query: fileId ? { fileId } : undefined,
+      query: Object.keys(query).length > 0 ? query : undefined,
     });
   } catch (error) {
     console.error("[dashboardService] GET request failed", {
@@ -20,8 +23,16 @@ export async function getDashboardData(fileId) {
   return getRequest("dashboard/stats", fileId);
 }
 
+export async function getDashboardDataByCompany(fileId, companyId) {
+  return getRequest("dashboard/stats", fileId, companyId);
+}
+
 export async function getPerformanceData(fileId) {
   return getRequest("dashboard/stats/performance", fileId);
+}
+
+export async function getPerformanceDataByCompany(fileId, companyId) {
+  return getRequest("dashboard/stats/performance", fileId, companyId);
 }
 
 export async function getCellsData(fileId) {

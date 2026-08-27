@@ -219,9 +219,12 @@ export async function retryUploadJob(jobId) {
   }
 }
 
-export async function fetchUploads() {
+export async function fetchUploads(companyId) {
   try {
-    return await apiFetch(ENDPOINTS.HISTORY, { method: "GET" });
+    return await apiFetch(ENDPOINTS.HISTORY, {
+      method: "GET",
+      query: companyId ? { companyId } : undefined,
+    });
   } catch (error) {
     console.error("[uploadService] fetchUploads failed", {
       message: error?.message,

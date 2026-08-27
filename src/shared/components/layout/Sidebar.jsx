@@ -18,6 +18,7 @@ import {
   SlidersHorizontal,
   FileCheck,
   UserPlus,
+  ShieldCheck,
 } from "lucide-react";
 import { useState } from "react";
 import toolLogo from "@/assets/images/toolLogo.svg";
@@ -30,20 +31,21 @@ export default function Sidebar({
   setIsCollapsed,
 }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const isSuperAdmin = String(user?.role || "").toUpperCase() === "SUPER_ADMIN";
+  const role = String(user?.role || "USER").toUpperCase();
 
   const navItems = [
     { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
     { to: "/kpi", label: "KPI View", icon: BarChart3 },
     { to: "/map", label: "Map View", icon: Map },
-    { to: "/worstcell", label: "Anomaly Detection", icon: AlertTriangle },
-    { to: "/recommendation", label: "RCA Recommendation", icon: Lightbulb },
-    { to: "/uploads", label: "Uploads", icon: Upload },
-    { to: "/alarms", label: "Alarms", icon: Bell },
-    { to: "/threshold-rules", label: "Threshold Rules", icon: SlidersHorizontal },
-    { to: "/validation-report", label: "Validation Report", icon: FileCheck },
-    { to: "/sites", label: "Sites", icon: Radio },
-    { to: "/accounts", label: "Create Account", icon: UserPlus, adminOnly: true },
+    { to: "/worstcell", label: "Anomaly Detection", icon: AlertTriangle, roles: ["SUPER_ADMIN", "ADMIN"] },
+    { to: "/recommendation", label: "RCA Recommendation", icon: Lightbulb, roles: ["SUPER_ADMIN", "ADMIN"] },
+    { to: "/uploads", label: "Uploads", icon: Upload, roles: ["SUPER_ADMIN", "ADMIN"] },
+    { to: "/alarms", label: "Alarms", icon: Bell, roles: ["SUPER_ADMIN", "ADMIN"] },
+    { to: "/threshold-rules", label: "Threshold Rules", icon: SlidersHorizontal, roles: ["SUPER_ADMIN", "ADMIN"] },
+    { to: "/validation-report", label: "Validation Report", icon: FileCheck, roles: ["SUPER_ADMIN", "ADMIN"] },
+    { to: "/sites", label: "Sites", icon: Radio, roles: ["SUPER_ADMIN", "ADMIN"] },
+    { to: "/local-license", label: "Local License", icon: ShieldCheck, roles: ["SUPER_ADMIN", "ADMIN"] },
+    { to: "/admin", label: "Admin Management", icon: UserPlus, roles: ["SUPER_ADMIN"] },
   ];
 
   return (
@@ -107,7 +109,7 @@ export default function Sidebar({
         <nav className="flex-1 overflow-y-auto overflow-x-hidden py-4 px-3">
           <div className="space-y-1">
             {navItems
-              .filter((item) => !item.adminOnly || isSuperAdmin)
+              .filter((item) => !item.roles || item.roles.includes(role))
               .map((item) => {
               const Icon = item.icon;
               return (

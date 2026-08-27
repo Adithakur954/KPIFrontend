@@ -23,11 +23,13 @@ import {
   AlertTriangle,
   Bell,
   Search,
-  Download
+  Download,
+  Building2
 } from "lucide-react";
 import { uploadSitesFile, uploadKpisFileWithProgress, previewKpisFile, fetchUploadJob, fetchUploadJobs, retryUploadJob, fetchUploads, deleteUploadById } from "@/features/uploads/services/uploadService";
 import { uploadAlarmFile } from "@/features/alarms/services/alarmsService";
 import { useAuth } from "@/shared/context/AuthContext";
+import { fetchCompanies } from "@/shared/api/companyService";
 
 const UPLOAD_TYPES = {
   KPI: {
@@ -103,6 +105,8 @@ export default function UploadsPage() {
   const [uploadThresholdSummary, setUploadThresholdSummary] = useState(null);
   const [uploadCleaningStats, setUploadCleaningStats] = useState(null);
   const [uploadHistory, setUploadHistory] = useState([]);
+  const [companies, setCompanies] = useState([]);
+  const [selectedCompanyId, setSelectedCompanyId] = useState("");
   const [uploadJobs, setUploadJobs] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [loadingJobs, setLoadingJobs] = useState(true);
@@ -117,17 +121,27 @@ export default function UploadsPage() {
   const [previewing, setPreviewing] = useState(false);
   const [previewMessage, setPreviewMessage] = useState("");
   const [kpiColumnMapping, setKpiColumnMapping] = useState({});
+  const isSuperAdmin = String(user?.role || "").toUpperCase() === "SUPER_ADMIN";
   
   // Fetch upload history on component mount
   useEffect(() => {
     loadUploadHistory();
     loadUploadJobs();
-  }, []);
+  }, [selectedCompanyId]);
+
+  useEffect(() => {
+    if (!isSuperAdmin) return;
+    fetchCompanies().then((response) => {
+      if (response?.success) {
+        setCompanies(Array.isArray(response.data) ? response.data : []);
+      }
+    });
+  }, [isSuperAdmin]);
 
   const loadUploadHistory = async () => {
     try {
       setLoadingHistory(true);
-      const response = await fetchUploads();
+      const response = await fetchUploads(isSuperAdmin ? selectedCompanyId : undefined);
       
       if (response.success && Array.isArray(response.data)) {
         setUploadHistory(response.data);
@@ -696,6 +710,37 @@ export default function UploadsPage() {
             {selectedType.description}
           </p>
         </div>
+
+        {isSuperAdmin && (
+          <div className="mb-8 rounded-2xl border border-slate-200/60 bg-white/80 p-4 shadow-sm backdrop-blur-sm">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-50 text-blue-700">
+                  <Building2 className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-slate-800">Company Scope</p>
+                  <p className="text-xs text-slate-500">Upload history and KPI targets follow this selection.</p>
+                </div>
+              </div>
+              <select
+                value={selectedCompanyId}
+                onChange={(event) => {
+                  setSelectedCompanyId(event.target.value);
+                  setKpiTargetFileId("");
+                }}
+                className="min-w-[260px] rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+              >
+                <option value="">All companies</option>
+                {companies.map((company) => (
+                  <option key={company.id} value={String(company.id)}>
+                    {company.companyName}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
 
         {/* Upload Type Toggle */}
         <div className="mb-8">
