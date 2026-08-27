@@ -14,7 +14,7 @@ import {
   downloadDynamicKpiReport,
 } from "@/features/kpi/services/kpiService";
 
-import { Card, CardHeader, CardTitle, CardContent } from "@/features/kpi/components/Card";
+import { Card, CardHeader, CardTitle, CardContent } from "@/features/kpi/components/card";
 import {
   Loader2,
   X,
