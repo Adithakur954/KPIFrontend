@@ -1,4 +1,3 @@
-import { NavLink } from "react-router-dom";
 import {
   LayoutDashboard,
   BarChart3,
@@ -21,6 +20,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { useState } from "react";
+import { NavLink } from "react-router-dom";
 import toolLogo from "@/assets/images/toolLogo.svg";
 
 export default function Sidebar({

@@ -1,12 +1,13 @@
 import React from "react";
+import { useEffect, useMemo, useState } from "react";
 import UserContext from "./FileSelectionContext";
 
 const GLOBAL_FILE_SELECTION_STORAGE_KEY = "globalSelectedKpiFileId:v1";
 
 const FileContextProvider = ({ children }) => {
-  const [selectedFileId, setSelectedFileId] = React.useState("");
+  const [selectedFileId, setSelectedFileId] = useState("");
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (typeof window === "undefined") return;
     try {
       const savedValue = window.localStorage.getItem(
@@ -19,7 +20,7 @@ const FileContextProvider = ({ children }) => {
     }
   }, []);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (typeof window === "undefined") return;
     try {
       window.localStorage.setItem(
@@ -31,7 +32,7 @@ const FileContextProvider = ({ children }) => {
     }
   }, [selectedFileId]);
 
-  const value = React.useMemo(
+  const value = useMemo(
     () => ({
       selectedFileId,
       setSelectedFileId,

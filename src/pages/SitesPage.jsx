@@ -16,6 +16,7 @@ import {
 import { fetchUploads } from "@/features/uploads/services/uploadService";
 import {
   fetchSiteDetails,
+  fetchSiteIntelligence,
   fetchSitePredictionRecommendations,
   fetchSitePredictionSummary,
   fetchSiteSummary,
@@ -158,6 +159,7 @@ export default function SitesPage() {
   const [summary, setSummary] = useState(null);
   const [predictionSummary, setPredictionSummary] = useState(null);
   const [predictions, setPredictions] = useState([]);
+  const [siteIntelligence, setSiteIntelligence] = useState(null);
   const [selectedSite, setSelectedSite] = useState("");
   const [siteDetails, setSiteDetails] = useState(null);
   const [loadingUploads, setLoadingUploads] = useState(true);
@@ -241,7 +243,10 @@ export default function SitesPage() {
     setSiteDetails(null);
     setSelectedSite("");
 
-    const summaryResponse = await fetchSiteSummary(fileId);
+    const [summaryResponse, intelligenceResponse] = await Promise.all([
+      fetchSiteSummary(fileId),
+      fetchSiteIntelligence(fileId, 20),
+    ]);
     await loadPredictions(fileId);
 
     if (summaryResponse?.success) {
@@ -253,6 +258,12 @@ export default function SitesPage() {
     } else {
       setSummary(null);
       setMessage(summaryResponse?.message || "Failed to load site summary.");
+    }
+
+    if (intelligenceResponse?.success) {
+      setSiteIntelligence(intelligenceResponse.data);
+    } else {
+      setSiteIntelligence(null);
     }
 
     setLoadingAnalytics(false);
@@ -483,6 +494,97 @@ export default function SitesPage() {
                   </div>
                 )}
               </div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+              <div className="border-b border-slate-100 p-5">
+                <h2 className="text-lg font-semibold text-slate-900">Site Intelligence</h2>
+                <p className="text-xs text-slate-500">
+                  PCI collision, confusion, overshooting, missing neighbors, and handover risk scored from the uploaded site master and KPI data.
+                </p>
+              </div>
+              {loadingAnalytics ? (
+                <div className="flex items-center justify-center py-16 text-slate-500">
+                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                  Loading site intelligence...
+                </div>
+              ) : !siteIntelligence?.data?.length ? (
+                <div className="p-5">
+                  <EmptyState text="No site intelligence available for this file." />
+                </div>
+              ) : (
+                <div className="space-y-4 p-5">
+                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+                    <StatCard label="Sites" value={number(siteIntelligence.siteCount)} icon={Building2} tone="blue" />
+                    <StatCard label="Clusters" value={number(siteIntelligence.clusterCount)} icon={Layers} tone="amber" />
+                    <StatCard label="Critical" value={number(asArray(siteIntelligence.data).filter((site) => site.status === "CRITICAL").length)} icon={AlertTriangle} tone="red" />
+                    <StatCard label="Watch" value={number(asArray(siteIntelligence.data).filter((site) => site.status === "WATCH").length)} icon={Activity} tone="orange" />
+                    <StatCard label="Good" value={number(asArray(siteIntelligence.data).filter((site) => site.status === "GOOD").length)} icon={CheckCircle2} tone="green" />
+                  </div>
+
+                  <div className="overflow-x-auto rounded-xl border border-slate-100">
+                    <table className="min-w-full divide-y divide-slate-100 text-sm">
+                      <thead className="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
+                        <tr>
+                          <th className="px-4 py-3">Site</th>
+                          <th className="px-4 py-3">Impact</th>
+                          <th className="px-4 py-3">PCI</th>
+                          <th className="px-4 py-3">HO</th>
+                          <th className="px-4 py-3">TA</th>
+                          <th className="px-4 py-3">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {asArray(siteIntelligence.data).slice(0, 8).map((site) => (
+                          <tr key={`${site.rank}-${site.site}`} className="hover:bg-slate-50">
+                            <td className="px-4 py-3">
+                              <div className="font-semibold text-slate-900">{site.site || "-"}</div>
+                              <div className="text-xs text-slate-500">{site.cluster || "Unclustered"} {site.latestObservedAt ? `• ${site.latestObservedAt}` : ""}</div>
+                            </td>
+                            <td className="px-4 py-3 font-semibold text-slate-900">{percent(site.impactScore)}</td>
+                            <td className="px-4 py-3 text-slate-600">{percent(Math.max(site.pciCollisionScore || 0, site.pciConfusionScore || 0))}</td>
+                            <td className="px-4 py-3 text-slate-600">{percent(site.handoverRisk)}</td>
+                            <td className="px-4 py-3 text-slate-600">{percent(site.overshootingScore)}</td>
+                            <td className="px-4 py-3"><StatusBadge value={site.status} /></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {selectedSite && (() => {
+                    const selectedIntelligence = asArray(siteIntelligence.data).find(
+                      (site) => String(site.site || "").toLowerCase() === String(selectedSite).toLowerCase(),
+                    );
+                    if (!selectedIntelligence) return null;
+                    return (
+                      <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <h3 className="text-base font-semibold text-slate-900">{selectedIntelligence.site}</h3>
+                            <p className="text-xs text-slate-500">Latest observed {selectedIntelligence.latestObservedAt || "-"}</p>
+                          </div>
+                          <StatusBadge value={selectedIntelligence.status} />
+                        </div>
+                        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                          <StatCard label="Impact" value={percent(selectedIntelligence.impactScore)} icon={AlertTriangle} tone="red" />
+                          <StatCard label="PCI Risk" value={percent(Math.max(selectedIntelligence.pciCollisionScore || 0, selectedIntelligence.pciConfusionScore || 0))} icon={Radio} tone="orange" />
+                          <StatCard label="Handover Risk" value={percent(selectedIntelligence.handoverRisk)} icon={Activity} tone="amber" />
+                          <StatCard label="Overshooting" value={percent(selectedIntelligence.overshootingScore)} icon={Signal} tone="blue" />
+                        </div>
+                        <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
+                          <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">Recommendations</div>
+                          <ul className="mt-2 space-y-2 text-sm text-slate-700">
+                            {asArray(selectedIntelligence.recommendations).map((item, index) => (
+                              <li key={`${item}-${index}`} className="rounded-lg bg-slate-50 px-3 py-2">{item}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
             </div>
 
             <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">

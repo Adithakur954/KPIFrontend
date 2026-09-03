@@ -9,6 +9,7 @@ export default function AnalyticsRightDrawer({
   tabs = [],
   activeTab,
   onTabChange,
+  headerChildren,
   children,
 }) {
   return (
@@ -50,9 +51,11 @@ export default function AnalyticsRightDrawer({
             ))}
           </div>
         )}
+        {headerChildren && (
+          <div className="mt-3">{headerChildren}</div>
+        )}
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto bg-slate-950 p-4">{children}</div>
     </div>
   );
 }
-

@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState, useMemo, useRef } from "react";
 import { GoogleMap, useJsApiLoader } from "@react-google-maps/api";
 import { GoogleMapsOverlay } from "@deck.gl/google-maps";
-import { PolygonLayer, ScatterplotLayer, TextLayer } from "@deck.gl/layers";
+import { LineLayer, PolygonLayer, ScatterplotLayer, TextLayer } from "@deck.gl/layers";
 import { getMapDetails } from "@/features/map/services/mapService";
 import AnalyticsRightDrawer from "@/features/map/components/AnalyticsRightDrawer";
 import MapHeader from "@/features/map/components/MapHeader";
@@ -13,6 +13,7 @@ import { fetchUploads } from "@/features/uploads/services/uploadService";
 import { fetchDynamicMetrics, fetchWorstCells } from "@/features/validation_report/services/validationReportService";
 import {
   fetchSiteDetails,
+  fetchSiteIntelligence,
   fetchSitePredictionRecommendations,
   fetchSiteSummary,
   runLbWcfPrediction,
@@ -72,6 +73,19 @@ const predictionActionLabels = {
   COVERAGE_CHECK: "CV",
   OBSERVE: "O",
 };
+const handoverRelationColors = {
+  SAME_PCI: "#DC2626",
+  HANDOVER_FACE: "#2563EB",
+  SAME_CLUSTER: "#7C3AED",
+  NEARBY: "#059669",
+};
+const handoverCategoryColors = {
+  PCI: "#EF4444",
+  BAND: "#10B981",
+  TECHNOLOGY: "#8B5CF6",
+  OPERATOR: "#F59E0B",
+  NEIGHBOR: "#06B6D4",
+};
 const clampMapScale = (value) => Math.min(8, Math.max(0.05, Number(value || 1)));
 const MAX_PREDICTION_MAP_MARKERS = 600;
 const predictionActionDisplayOrder = ["LOAD_BALANCE", "QUALITY_CHECK", "CAPACITY_REVIEW", "COVERAGE_CHECK", "OBSERVE"];
@@ -88,6 +102,8 @@ const pciLayerModes = [
 ];
 const analyticsTabs = [
   { value: "overview", label: "Overview" },
+  { value: "clusters", label: "Clusterization" },
+  { value: "handover", label: "Handover" },
   { value: "predictions", label: "Prediction" },
   { value: "worstCells", label: "Worst Cells" },
   { value: "alarms", label: "Alarm Cells" },
@@ -1110,6 +1126,20 @@ function getSiteMapLabel(site) {
   return { bands, technologies, bandLabel, techLabel };
 }
 
+function getIntelligenceTone(status, impactScore = 0) {
+  const normalized = String(status || "").toUpperCase();
+  if (normalized === "CRITICAL" || Number(impactScore) >= 80) {
+    return { fill: "#DC2626", stroke: "#7F1D1D", light: "#FEE2E2" };
+  }
+  if (normalized === "BAD" || Number(impactScore) >= 60) {
+    return { fill: "#EA580C", stroke: "#9A3412", light: "#FFEDD5" };
+  }
+  if (normalized === "WATCH" || Number(impactScore) >= 35) {
+    return { fill: "#D97706", stroke: "#92400E", light: "#FEF3C7" };
+  }
+  return { fill: "#16A34A", stroke: "#166534", light: "#DCFCE7" };
+}
+
 function getBandFrequencyScale(cell) {
   const rawBand = getCellBandLabel(cell).toLowerCase();
   const frequency =
@@ -1154,6 +1184,7 @@ export default function MapPage() {
   const [loadingWorst, setLoadingWorst] = useState(false);
   const [siteSummary, setSiteSummary] = useState(null);
   const [siteDetails, setSiteDetails] = useState(null);
+  const [siteIntelligence, setSiteIntelligence] = useState(null);
   const [, setPredictionSummary] = useState(null);
   const [predictions, setPredictions] = useState([]);
   const [lbTaFile, setLbTaFile] = useState(null);
@@ -1180,6 +1211,12 @@ export default function MapPage() {
   const [showAlarms, setShowAlarms] = useState(false);
   const [showWorstSites, setShowWorstSites] = useState(false);
   const [showPredictions, setShowPredictions] = useState(false);
+  const [showTechHandovers, setShowTechHandovers] = useState(false);
+  const [showBandHandovers, setShowBandHandovers] = useState(false);
+  const [showPciHandovers, setShowPciHandovers] = useState(false);
+  const [showPciIssues, setShowPciIssues] = useState(false);
+  const [showOvershooting, setShowOvershooting] = useState(false);
+  const [showMissingNeighbours, setShowMissingNeighbours] = useState(false);
   const [siteMarkerScale, setSiteMarkerScale] = useState(1);
   const [cellRadiusScale, setCellRadiusScale] = useState(1);
   const [selectedTechnologyFilter, setSelectedTechnologyFilter] = useState("");
@@ -1206,6 +1243,7 @@ export default function MapPage() {
   const zoomTimeoutRef = useRef(null);
   const miniTooltipRef = useRef(null); // ADDED: Track mini tooltip
   const sidebarContentRef = useRef(null);
+  const handoverPolylinesRef = useRef(new Map());
 
   const containerStyle = {
     width: "100%",
@@ -1438,6 +1476,24 @@ export default function MapPage() {
   }, [selectedFileId]);
 
   useEffect(() => {
+    if (!selectedFileId) {
+      setSiteIntelligence(null);
+      return;
+    }
+
+    const loadSiteIntelligence = async () => {
+      const response = await fetchSiteIntelligence(selectedFileId, selectedSiteFileId, 1000);
+      if (response?.success) {
+        setSiteIntelligence(response.data || null);
+      } else {
+        setSiteIntelligence(null);
+      }
+    };
+
+    loadSiteIntelligence();
+  }, [selectedFileId, selectedSiteFileId]);
+
+  useEffect(() => {
     if (!selectedFileId) return;
 
     const loadPredictions = async () => {
@@ -1623,6 +1679,7 @@ export default function MapPage() {
 
   const uniqueSites = useMemo(() => Object.values(groupedSites), [groupedSites]);
   const siteAnalyticsRows = asArray(siteSummary?.data);
+  const siteIntelligenceRows = asArray(siteIntelligence?.data);
 
   const siteAnalyticsByName = useMemo(() => {
     const lookup = new Map();
@@ -1632,6 +1689,453 @@ export default function MapPage() {
     });
     return lookup;
   }, [siteAnalyticsRows]);
+
+  const siteIntelligenceByName = useMemo(() => {
+    const lookup = new Map();
+    siteIntelligenceRows.forEach((item) => {
+      [
+        item?.site,
+        item?.siteId,
+        item?.siteName,
+        item?.SITEID,
+      ].map(normalizeKey).filter(Boolean).forEach((key) => lookup.set(key, item));
+    });
+    return lookup;
+  }, [siteIntelligenceRows]);
+
+  const resolveMapSite = useCallback((value) => {
+    const key = normalizeKey(value);
+    if (!key) return null;
+    return uniqueSites.find((site) =>
+      normalizeKey(site.SITEID) === key ||
+      normalizeKey(site.Site_Name) === key
+    ) || null;
+  }, [uniqueSites]);
+
+  const primarySiteIntelligence = siteIntelligenceRows[0] || null;
+
+  const selectedSiteIntelligence = useMemo(() => {
+    if (!selectedSite) return null;
+    return (
+      siteIntelligenceByName.get(normalizeKey(selectedSite.SITEID)) ||
+      siteIntelligenceByName.get(normalizeKey(selectedSite.Site_Name)) ||
+      siteIntelligenceByName.get(normalizeKey(selectedSite.site)) ||
+      null
+    );
+  }, [selectedSite, siteIntelligenceByName]);
+
+  const focusSiteIntelligence = selectedSiteIntelligence || (activeMapPanel === "clusters" || activeMapPanel === "handover" ? primarySiteIntelligence : null);
+
+  const focusMapSite = useMemo(() => {
+    if (selectedSite) return selectedSite;
+    if (!focusSiteIntelligence) return null;
+    return resolveMapSite(
+      focusSiteIntelligence.site ||
+      focusSiteIntelligence.siteName ||
+      focusSiteIntelligence.siteId
+    );
+  }, [selectedSite, focusSiteIntelligence, resolveMapSite]);
+
+  const filteredSites = useMemo(() => {
+    const technologyKey = normalizeKey(selectedTechnologyFilter);
+    const bandKey = normalizeKey(selectedBandFilter);
+    const pciKey = normalizePci(pciFilter);
+
+    if (!technologyKey && !bandKey && !pciKey) return uniqueSites;
+
+    return uniqueSites
+      .map((site) => {
+        const matchingCells = site.cells.filter((cell) => {
+          const matchesTechnology = !technologyKey || normalizeKey(getCellTechnologyLabel(cell)) === technologyKey;
+          const matchesBand = !bandKey || normalizeKey(getCellBandLabel(cell)) === bandKey;
+          const matchesPci = !pciKey || normalizePci(cell.PCI) === pciKey;
+          return matchesTechnology && matchesBand && matchesPci;
+        });
+        return matchingCells.length > 0 ? { ...site, cells: matchingCells } : null;
+      })
+      .filter(Boolean);
+  }, [uniqueSites, selectedTechnologyFilter, selectedBandFilter, pciFilter]);
+
+  const filteredCellCount = useMemo(
+    () => filteredSites.reduce((total, site) => total + site.cells.length, 0),
+    [filteredSites],
+  );
+
+  const handoverRelationItems = useMemo(() => {
+    const backendRelations = siteIntelligenceRows.flatMap((row) =>
+      asArray(row?.mapOverlay?.handoverRelations).map((relation) => ({
+        ...relation,
+        __sourceRow: row,
+      }))
+    );
+    if (backendRelations.length > 0) {
+      const relations = backendRelations
+        .map((item, index) => {
+          const sourceSite = resolveMapSite(item.sourceSite?.siteId || item.sourceSite?.siteName || item.sourceSite?.site) ||
+            resolveMapSite(item.__sourceRow?.siteId || item.__sourceRow?.siteName || item.__sourceRow?.site) ||
+            focusMapSite || item.sourceSite || null;
+          const targetSite = resolveMapSite(item.targetSite?.siteId || item.targetSite?.siteName || item.targetSite?.site) || item.targetSite || null;
+          if (!sourceSite || !targetSite) {
+            return null;
+          }
+
+          const sourceLat = Number(sourceSite.lat ?? sourceSite.latitude);
+          const sourceLon = Number(sourceSite.lon ?? sourceSite.longitude);
+          const targetLat = Number(targetSite.lat ?? targetSite.latitude);
+          const targetLon = Number(targetSite.lon ?? targetSite.longitude);
+          if (!Number.isFinite(sourceLat) || !Number.isFinite(sourceLon) || !Number.isFinite(targetLat) || !Number.isFinite(targetLon)) {
+            return null;
+          }
+
+          return {
+            ...item,
+            sourceSite,
+            targetSite,
+            sourcePosition: [sourceLon, sourceLat],
+            targetPosition: [targetLon, targetLat],
+            distanceKm: Number(item.distanceKm || 0),
+            samePci: Boolean(item.samePci),
+            facing: Boolean(item.facing),
+            sameCluster: Boolean(item.sameCluster),
+            pciOverlap: Number(item.pciOverlap || 0),
+            relationType: String(item.relationType || "NEARBY"),
+            relationScore: Number(item.relationScore || 0),
+            color: item.color || handoverRelationColors.NEARBY,
+            width: Number(item.width || 2),
+            handoverCategories: [
+              item.samePci ? "PCI" : null,
+              normalizeKey(sourceSite.band || sourceSite.Band) !== normalizeKey(targetSite.band || targetSite.Band) ? "BAND" : null,
+              normalizeKey(sourceSite.technology || sourceSite.Technology) !== normalizeKey(targetSite.technology || targetSite.Technology) ? "TECHNOLOGY" : null,
+              normalizeKey(sourceSite.operator || sourceSite.Operator || sourceSite.carrier) &&
+              normalizeKey(targetSite.operator || targetSite.Operator || targetSite.carrier) &&
+              normalizeKey(sourceSite.operator || sourceSite.Operator || sourceSite.carrier) !== normalizeKey(targetSite.operator || targetSite.Operator || targetSite.carrier) ? "OPERATOR" : null,
+            ].filter(Boolean),
+            __backendIndex: index,
+          };
+        })
+        .filter(Boolean);
+
+      // The backend returns the same neighbor pair from both directions.
+      // Keep one line per pair so the map remains readable.
+      const uniqueRelations = new Map();
+      relations.forEach((relation) => {
+        const endpoints = [
+          normalizeKey(relation.sourceSite?.SITEID),
+          normalizeKey(relation.targetSite?.SITEID),
+        ].sort();
+        const key = `${endpoints[0]}::${endpoints[1]}`;
+        const existing = uniqueRelations.get(key);
+        if (!existing || relation.relationScore > existing.relationScore) {
+          uniqueRelations.set(key, relation);
+        }
+      });
+
+      return [...uniqueRelations.values()]
+        .map((relation) => ({
+          ...relation,
+          handoverCategory: relation.handoverCategories?.[0] || "NEIGHBOR",
+          categoryColor: handoverCategoryColors[relation.handoverCategories?.[0] || "NEIGHBOR"],
+        }))
+        .sort((left, right) => right.relationScore - left.relationScore)
+        .slice(0, 30);
+    }
+
+    const sourceSites = focusMapSite ? [focusMapSite] : filteredSites;
+    return sourceSites.flatMap((sourceSite) => {
+      if (!Number.isFinite(Number(sourceSite.lat)) || !Number.isFinite(Number(sourceSite.lon))) return [];
+
+      const sourcePcis = new Set(asArray(sourceSite.cells).map((cell) => normalizePci(cell.PCI)).filter(Boolean));
+      const sourceCluster = normalizeKey(sourceSite.cluster || sourceSite.Cluster);
+
+      return filteredSites
+      .filter((candidate) => normalizeKey(candidate.SITEID) !== normalizeKey(sourceSite.SITEID))
+      .map((candidate) => {
+        if (!Number.isFinite(Number(candidate.lat)) || !Number.isFinite(Number(candidate.lon))) {
+          return null;
+        }
+        if (!isInferredNeighbourSite(sourceSite, candidate)) {
+          return null;
+        }
+
+        const distance = distanceKm(sourceSite, candidate);
+        const candidatePcis = new Set(asArray(candidate.cells).map((cell) => normalizePci(cell.PCI)).filter(Boolean));
+        const pciOverlap = [...sourcePcis].filter((pci) => candidatePcis.has(pci)).length;
+        const samePci = pciOverlap > 0;
+        const facing = siteFacesCandidate(sourceSite, candidate) || siteFacesCandidate(candidate, sourceSite);
+        const sameCluster = Boolean(sourceCluster) && sourceCluster === normalizeKey(candidate.cluster || candidate.Cluster);
+        const relationType = samePci
+          ? "SAME_PCI"
+          : facing
+            ? "HANDOVER_FACE"
+            : sameCluster
+              ? "SAME_CLUSTER"
+              : "NEARBY";
+        const relationScore = Math.max(
+          10,
+          Math.round(
+            (samePci ? 38 : 0) +
+            (facing ? 24 : 0) +
+            (sameCluster ? 10 : 0) +
+            (distance == null ? 0 : Math.max(0, 40 - distance * 4))
+          )
+        );
+
+        return {
+          sourceSite,
+          targetSite: candidate,
+          sourcePosition: [Number(sourceSite.lon), Number(sourceSite.lat)],
+          targetPosition: [Number(candidate.lon), Number(candidate.lat)],
+          distanceKm: distance,
+          samePci,
+          facing,
+          sameCluster,
+          pciOverlap,
+          relationType,
+          relationScore,
+          color: handoverRelationColors[relationType] || handoverRelationColors.NEARBY,
+          width: relationType === "SAME_PCI" ? 4 : relationType === "HANDOVER_FACE" ? 3 : 2,
+          handoverCategories: [
+            samePci ? "PCI" : null,
+            normalizeKey(sourceSite.Band || sourceSite.band) !== normalizeKey(candidate.Band || candidate.band) ? "BAND" : null,
+            normalizeKey(sourceSite.Technology || sourceSite.technology) !== normalizeKey(candidate.Technology || candidate.technology) ? "TECHNOLOGY" : null,
+          ].filter(Boolean),
+        };
+      })
+      .filter(Boolean)
+      .sort((left, right) => right.relationScore - left.relationScore);
+    })
+      .map((relation) => ({
+        ...relation,
+        handoverCategory: relation.handoverCategories?.[0] || "NEIGHBOR",
+        categoryColor: handoverCategoryColors[relation.handoverCategories?.[0] || "NEIGHBOR"],
+      }))
+      .slice(0, 30);
+  }, [filteredSites, focusMapSite, focusSiteIntelligence, resolveMapSite]);
+
+  const handoverRelationMap = useMemo(() => {
+    const lookup = new Map();
+    handoverRelationItems.forEach((item) => {
+      const key = normalizeKey(item.targetSite?.SITEID);
+      if (key && !lookup.has(key)) {
+        lookup.set(key, item);
+      }
+    });
+    return lookup;
+  }, [handoverRelationItems]);
+
+  const handoverRelationCounts = useMemo(() => {
+    return handoverRelationItems.reduce(
+      (acc, item) => {
+        acc.total += 1;
+        acc.samePci += item.samePci ? 1 : 0;
+        acc.facing += item.facing ? 1 : 0;
+        acc.sameCluster += item.sameCluster ? 1 : 0;
+        acc.nearby += item.relationType === "NEARBY" ? 1 : 0;
+        return acc;
+      },
+      { total: 0, samePci: 0, facing: 0, sameCluster: 0, nearby: 0 },
+    );
+  }, [handoverRelationItems]);
+
+  const handoverCategoryCounts = useMemo(() => {
+    const counts = { PCI: 0, BAND: 0, TECHNOLOGY: 0, OPERATOR: 0, NEIGHBOR: 0 };
+    handoverRelationItems.forEach((item) => {
+      const categories = item.handoverCategories?.length ? item.handoverCategories : ["NEIGHBOR"];
+      categories.forEach((category) => {
+        counts[category] = (counts[category] || 0) + 1;
+      });
+    });
+    return counts;
+  }, [handoverRelationItems]);
+
+  const handoverOverlayEnabled = showTechHandovers || showBandHandovers || showPciHandovers;
+
+  const visibleHandoverRelationItems = useMemo(() => {
+    const enabledCategories = new Set();
+    if (showTechHandovers) enabledCategories.add("TECHNOLOGY");
+    if (showBandHandovers) enabledCategories.add("BAND");
+    if (showPciHandovers) enabledCategories.add("PCI");
+    return handoverRelationItems
+      .filter((item) => (item.handoverCategories || []).some((category) => enabledCategories.has(category)))
+      .map((item) => {
+        const activeCategory = ["PCI", "BAND", "TECHNOLOGY"]
+          .find((category) => enabledCategories.has(category) && item.handoverCategories?.includes(category)) || "NEIGHBOR";
+        return {
+          ...item,
+          handoverCategory: activeCategory,
+          categoryColor: handoverCategoryColors[activeCategory],
+        };
+      });
+  }, [handoverRelationItems, showBandHandovers, showPciHandovers, showTechHandovers]);
+
+  const handoverFocusTechnology = normalizeKey(focusMapSite?.technology || focusSiteIntelligence?.technology || "");
+  const handoverFocusBand = normalizeKey(focusMapSite?.band || focusSiteIntelligence?.band || "");
+  const handoverTechnologyCount = useMemo(() => {
+    if (!handoverRelationItems.length) return 0;
+    return handoverRelationItems.filter((item) => normalizeKey(item.targetSite?.technology || item.targetSite?.Tech || "") !== handoverFocusTechnology).length;
+  }, [handoverFocusTechnology, handoverRelationItems]);
+  const handoverBandCount = useMemo(() => {
+    if (!handoverRelationItems.length) return 0;
+    return handoverRelationItems.filter((item) => normalizeKey(item.targetSite?.band || item.targetSite?.Band || "") !== handoverFocusBand).length;
+  }, [handoverFocusBand, handoverRelationItems]);
+
+  const siteIntelligenceOverlayRows = useMemo(() => {
+    return siteIntelligenceRows.flatMap((item) =>
+      asArray(item?.mapOverlay?.issueMarkers).map((marker) => ({
+        ...marker,
+        __resolvedSite: resolveMapSite(marker.siteId || marker.siteName || marker.site),
+        __impactScore: Number(item.impactScore || 0),
+        __sourceRow: item,
+      }))
+    );
+  }, [resolveMapSite, siteIntelligenceRows]);
+
+  const siteIntelligenceMapItems = useMemo(() => {
+    if (siteIntelligenceOverlayRows.length > 0) {
+      return siteIntelligenceOverlayRows
+        .map((item, index) => {
+          const lat = Number(item.latitude ?? item.lat);
+          const lon = Number(item.longitude ?? item.lon);
+          if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+            return null;
+          }
+
+          const spread = 0.0015 + Math.min(0.004, Number(item.issueScore || 0) / 5000);
+          const angle = index * 1.35;
+          return {
+            ...item,
+            __lat: lat + Math.sin(angle) * spread,
+            __lon: lon + Math.cos(angle) * spread,
+            __siteKey: normalizeKey(item.site || item.siteName || item.siteId),
+            __impactScore: Number(item.__impactScore || item.impactScore || 0),
+            __issueKey: item.issueKey || "IMPACT",
+            __issueLabel: item.issueLabel || "Impact",
+            __issueShortLabel: item.issueShortLabel || "IMP",
+            __issueScore: Number(item.issueScore || 0),
+            __issueColor: item.color || "#6366F1",
+          };
+        })
+        .filter(Boolean)
+        .slice(0, 240);
+    }
+
+    const issueDefinitions = [
+      { key: "PCI_COLLISION", label: "PCI Collision", shortLabel: "PCI", scoreKey: "pciCollisionScore", color: "#EF4444" },
+      { key: "PCI_CONFUSION", label: "PCI Confusion", shortLabel: "PCI", scoreKey: "pciConfusionScore", color: "#F97316" },
+      { key: "OVERSHOOTING", label: "Overshooting", shortLabel: "OVR", scoreKey: "overshootingScore", color: "#A855F7" },
+      { key: "HANDOVER", label: "Handover", shortLabel: "HO", scoreKey: "handoverRisk", color: "#06B6D4" },
+      { key: "MISSING_NEIGHBOR", label: "Missing Neighbour", shortLabel: "NEI", scoreKey: "missingNeighborScore", color: "#10B981" },
+    ];
+
+    return siteIntelligenceRows.flatMap((item) => {
+      const lat = Number(item.latitude ?? item.lat);
+      const lon = Number(item.longitude ?? item.lon);
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+        return [];
+      }
+
+      const resolvedSite = resolveMapSite(item.site || item.siteName || item.siteId);
+      const baseImpact = Number(item.impactScore || 0);
+      const activeIssues = issueDefinitions
+        .map((issue) => ({
+          ...issue,
+          score: Number(item[issue.scoreKey] || 0),
+        }))
+        .filter((issue) => issue.score >= 35 || (issue.key === "HANDOVER" && issue.score >= 25));
+
+      const markers = activeIssues.length > 0
+        ? activeIssues
+        : (baseImpact >= 60
+          ? [{
+              key: "IMPACT",
+              label: "Impact",
+              shortLabel: "IMP",
+              score: baseImpact,
+              color: "#6366F1",
+            }]
+          : []);
+
+      return markers.map((issue, issueIndex) => {
+        const spread = 0.0015 + Math.min(0.004, Number(issue.score || 0) / 5000);
+        const angle = issueIndex * 1.35;
+        return {
+          ...item,
+          __lat: lat + Math.sin(angle) * spread,
+          __lon: lon + Math.cos(angle) * spread,
+          __siteKey: normalizeKey(item.site || item.siteName || item.siteId),
+          __resolvedSite: resolvedSite,
+          __impactScore: baseImpact,
+          __issueKey: issue.key,
+          __issueLabel: issue.label,
+          __issueShortLabel: issue.shortLabel,
+          __issueScore: issue.score,
+          __issueColor: issue.color,
+        };
+      });
+    })
+      .sort((left, right) => (right.__issueScore || 0) - (left.__issueScore || 0))
+      .slice(0, 240);
+  }, [resolveMapSite, siteIntelligenceOverlayRows, siteIntelligenceRows]);
+
+  const intelligenceIssueCounts = useMemo(() => {
+    return siteIntelligenceMapItems.reduce(
+      (acc, item) => {
+        const key = item.__issueKey || "IMPACT";
+        acc.total += 1;
+        acc[key] = (acc[key] || 0) + 1;
+        return acc;
+      },
+      { total: 0, PCI_COLLISION: 0, PCI_CONFUSION: 0, OVERSHOOTING: 0, HANDOVER: 0, MISSING_NEIGHBOR: 0, IMPACT: 0 },
+    );
+  }, [siteIntelligenceMapItems]);
+
+  const visibleSiteIntelligenceMapItems = useMemo(() => {
+    const enabledIssues = new Set();
+    if (showPciIssues) {
+      enabledIssues.add("PCI_COLLISION");
+      enabledIssues.add("PCI_CONFUSION");
+    }
+    if (showOvershooting) enabledIssues.add("OVERSHOOTING");
+    if (showMissingNeighbours) enabledIssues.add("MISSING_NEIGHBOR");
+
+    return siteIntelligenceMapItems.filter((item) => enabledIssues.has(item.__issueKey));
+  }, [handoverOverlayEnabled, showMissingNeighbours, showOvershooting, showPciIssues, siteIntelligenceMapItems]);
+
+  const visibleIntelligenceIssueCounts = useMemo(() => {
+    return visibleSiteIntelligenceMapItems.reduce(
+      (acc, item) => {
+        const key = item.__issueKey || "IMPACT";
+        acc.total += 1;
+        acc[key] = (acc[key] || 0) + 1;
+        return acc;
+      },
+      { total: 0, PCI_COLLISION: 0, PCI_CONFUSION: 0, OVERSHOOTING: 0, HANDOVER: 0, MISSING_NEIGHBOR: 0, IMPACT: 0 },
+    );
+  }, [visibleSiteIntelligenceMapItems]);
+
+  const siteIntelligenceTimestampLabel = useMemo(() => {
+    const raw =
+      primarySiteIntelligence?.latestObservedAt ||
+      primarySiteIntelligence?.observedAt ||
+      primarySiteIntelligence?.timestamp ||
+      primarySiteIntelligence?.updatedAt ||
+      "";
+
+    if (!raw) return "Latest snapshot unavailable";
+
+    const parsed = new Date(raw);
+    if (Number.isNaN(parsed.getTime())) return String(raw);
+
+    return new Intl.DateTimeFormat("en-IN", {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(parsed);
+  }, [primarySiteIntelligence]);
+
+  const clusterSummaryRows = useMemo(() => {
+    const rows = asArray(siteIntelligence?.clusterSummary?.data);
+    return rows.length > 0 ? rows : [];
+  }, [siteIntelligence]);
 
   const siteAnalyticsTotals = useMemo(() => {
     return siteAnalyticsRows.reduce(
@@ -1771,31 +2275,6 @@ export default function MapPage() {
       pcis: [...pcis].sort((a, b) => a.localeCompare(b, undefined, { numeric: true })),
     };
   }, [uniqueSites]);
-
-  const filteredSites = useMemo(() => {
-    const technologyKey = normalizeKey(selectedTechnologyFilter);
-    const bandKey = normalizeKey(selectedBandFilter);
-    const pciKey = normalizePci(pciFilter);
-
-    if (!technologyKey && !bandKey && !pciKey) return uniqueSites;
-
-    return uniqueSites
-      .map((site) => {
-        const matchingCells = site.cells.filter((cell) => {
-          const matchesTechnology = !technologyKey || normalizeKey(getCellTechnologyLabel(cell)) === technologyKey;
-          const matchesBand = !bandKey || normalizeKey(getCellBandLabel(cell)) === bandKey;
-          const matchesPci = !pciKey || normalizePci(cell.PCI) === pciKey;
-          return matchesTechnology && matchesBand && matchesPci;
-        });
-        return matchingCells.length > 0 ? { ...site, cells: matchingCells } : null;
-      })
-      .filter(Boolean);
-  }, [uniqueSites, selectedTechnologyFilter, selectedBandFilter, pciFilter]);
-
-  const filteredCellCount = useMemo(
-    () => filteredSites.reduce((total, site) => total + site.cells.length, 0),
-    [filteredSites],
-  );
 
   useEffect(() => {
     if (selectedSite && !filteredSites.some((site) => normalizeKey(site.SITEID) === normalizeKey(selectedSite.SITEID))) {
@@ -3383,6 +3862,9 @@ export default function MapPage() {
     const siteAlerts = getSiteAlarms(site);
     const severity = getWorstAlarmSeverity(site);
     const siteLabels = getSiteMapLabel(site);
+    const intelligence = siteIntelligenceByName.get(normalizeKey(site?.SITEID)) ||
+      siteIntelligenceByName.get(normalizeKey(site?.Site_Name));
+    const clusterTone = intelligence ? getIntelligenceTone(intelligence.status, intelligence.impactScore) : null;
     return `
       <div style="padding: 0; width: 320px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; border-radius: 12px; overflow: hidden; background: white;">
         <div style="background: linear-gradient(135deg, #2563EB20 0%, #93C5FD 100%); padding: 18px; border-bottom: 3px solid #2563EB;">
@@ -3413,10 +3895,36 @@ export default function MapPage() {
           <div style="background: #F8FAFC; border-radius: 10px; padding: 10px; font-size: 11px; color: #475569;">
             ${siteAlerts.length > 0 ? `${siteAlerts.length} open alarm(s)` : 'No open alarms for this site.'}
           </div>
+          ${intelligence ? `
+            <div style="background: ${clusterTone?.light || '#F8FAFC'}; border: 1px solid ${clusterTone?.fill || '#CBD5E1'}; border-radius: 10px; padding: 10px; font-size: 11px; color: #475569;">
+              <div style="display: flex; justify-content: space-between; gap: 10px; margin-bottom: 6px;">
+                <span>Cluster</span>
+                <strong style="color: #0F172A; text-align: right;">${intelligence.cluster || 'Unclustered'}</strong>
+              </div>
+              <div style="display: flex; justify-content: space-between; gap: 10px;">
+                <span>Impact</span>
+                <strong style="color: #0F172A; text-align: right;">${Number(intelligence.impactScore || 0).toFixed(1)}%</strong>
+              </div>
+              <div style="display: flex; justify-content: space-between; gap: 10px; margin-top: 6px;">
+                <span>PCI / HO / Neigh</span>
+                <strong style="color: #0F172A; text-align: right;">
+                  ${Number(Math.max(intelligence.pciCollisionScore || 0, intelligence.pciConfusionScore || 0)).toFixed(1)}% / ${Number(intelligence.handoverRisk || 0).toFixed(1)}% / ${Number(intelligence.missingNeighborScore || 0).toFixed(1)}%
+                </strong>
+              </div>
+              <div style="display: flex; justify-content: space-between; gap: 10px; margin-top: 6px;">
+                <span>Overshoot</span>
+                <strong style="color: #0F172A; text-align: right;">${Number(intelligence.overshootingScore || 0).toFixed(1)}%</strong>
+              </div>
+              <div style="display: flex; justify-content: space-between; gap: 10px; margin-top: 6px;">
+                <span>Latest observed</span>
+                <strong style="color: #0F172A; text-align: right;">${intelligence.latestObservedAt || intelligence.observedAt || intelligence.updatedAt || '-'}</strong>
+              </div>
+            </div>
+          ` : ""}
         </div>
       </div>
     `;
-  }, [getSiteAlarms, getWorstAlarmSeverity, predictionBySite]);
+  }, [getSiteAlarms, getWorstAlarmSeverity, predictionBySite, siteIntelligenceByName]);
 
   const createWorstCellInfoWindow = useCallback((item) => {
     const cellName = item?.cellName || item?.cell || item?.__cell?.Cell_Name || "Unknown cell";
@@ -3490,6 +3998,12 @@ export default function MapPage() {
   }, [pciVisibleSiteIds, selectedPci, selectedPciSiteId]);
 
   const getSiteMarkerIcon = useCallback((site, selected = false) => {
+    const intelligence = siteIntelligenceByName.get(normalizeKey(site?.SITEID)) ||
+      siteIntelligenceByName.get(normalizeKey(site?.Site_Name));
+    const clusterTone = activeMapPanel === "clusters" && intelligence
+      ? getIntelligenceTone(intelligence.status, intelligence.impactScore)
+      : null;
+    const handoverRelation = handoverRelationMap.get(normalizeKey(site?.SITEID));
     const hasWorst = siteHasWorstCell(site);
     const hasSelectedPci = siteHasSelectedPci(site);
     const hasWorstSite = siteHasWorstSite(site);
@@ -3501,13 +4015,20 @@ export default function MapPage() {
     const hasAlarm = severityOrder[alarmSeverity] > 0;
     const pciMode = Boolean(selectedPci);
     const isSource = selectedPci && normalizeKey(site?.SITEID) === normalizeKey(selectedPciSiteId);
-    const shouldHighlight = isSource || hasSelectedPci || hasAlarm || hasWorst || hasWorstSite || hasPrediction;
+    const handoverFocus = Boolean(focusMapSite) && normalizeKey(site?.SITEID) === normalizeKey(focusMapSite.SITEID);
+    const shouldHighlight = isSource || hasSelectedPci || hasAlarm || hasWorst || hasWorstSite || hasPrediction || Boolean(clusterTone) || Boolean(handoverRelation) || handoverFocus;
     const fillColor = pciMode
       ? isSource
         ? "#FACC15"
         : hasSelectedPci
           ? "#DC2626"
           : "#16A34A"
+      : handoverFocus
+        ? "#FACC15"
+      : handoverRelation
+        ? handoverRelation.color
+      : clusterTone
+        ? clusterTone.fill
       : hasAlarm
       ? severityMarkerColors[alarmSeverity]
       : hasSelectedPci
@@ -3524,12 +4045,28 @@ export default function MapPage() {
       scale: (shouldHighlight ? (selected || isSource ? 9 : 7) : (selected ? 7 : 5.5)) * siteMarkerScale,
       fillColor,
       fillOpacity: 1,
-      strokeColor: isSource ? "#78350F" : shouldHighlight || selected ? "#FFFFFF" : pciMode ? "#FFFFFF" : "#3B82F6",
+      strokeColor: isSource
+        ? "#78350F"
+        : handoverFocus
+          ? "#78350F"
+        : handoverRelation?.color
+          ? handoverRelation.color
+        : clusterTone?.stroke
+          ? clusterTone.stroke
+          : (shouldHighlight || selected || pciMode)
+            ? "#FFFFFF"
+            : "#3B82F6",
       strokeWeight: isSource ? 4 : 2,
     };
-  }, [siteHasWorstCell, siteHasWorstSite, siteHasSelectedPci, selectedPci, selectedPciSiteId, showPredictions, showAlarms, predictionBySite, getWorstAlarmSeverity, siteMarkerScale]);
+  }, [siteHasWorstCell, siteHasWorstSite, siteHasSelectedPci, selectedPci, selectedPciSiteId, showPredictions, showAlarms, predictionBySite, getWorstAlarmSeverity, siteMarkerScale, siteIntelligenceByName, activeMapPanel, handoverRelationMap, focusMapSite]);
 
   const getDeckSiteColor = useCallback((site, selected = false) => {
+    const intelligence = siteIntelligenceByName.get(normalizeKey(site?.SITEID)) ||
+      siteIntelligenceByName.get(normalizeKey(site?.Site_Name));
+    const clusterTone = activeMapPanel === "clusters" && intelligence
+      ? getIntelligenceTone(intelligence.status, intelligence.impactScore)
+      : null;
+    const handoverRelation = handoverRelationMap.get(normalizeKey(site?.SITEID));
     const hasSelectedPci = siteHasSelectedPci(site);
     const hasWorst = siteHasWorstCell(site);
     const hasWorstSite = siteHasWorstSite(site);
@@ -3541,7 +4078,11 @@ export default function MapPage() {
     const hasAlarm = severityOrder[alarmSeverity] > 0;
     const pciMode = Boolean(selectedPci);
     const isSource = selectedPci && normalizeKey(site?.SITEID) === normalizeKey(selectedPciSiteId);
+    const handoverFocus = Boolean(focusMapSite) && normalizeKey(site?.SITEID) === normalizeKey(focusMapSite.SITEID);
 
+    if (handoverFocus) return hexToRgba("#FACC15", 250);
+    if (handoverRelation?.color) return hexToRgba(handoverRelation.color, 250);
+    if (clusterTone) return hexToRgba(clusterTone.fill, 250);
     if (pciMode) return hexToRgba(isSource ? "#FACC15" : hasSelectedPci ? "#DC2626" : "#16A34A", 245);
     if (hasAlarm) return hexToRgba(severityMarkerColors[alarmSeverity], 255);
     if (isSource) return hexToRgba("#FACC15", 255);
@@ -3551,7 +4092,7 @@ export default function MapPage() {
     if (selected) return hexToRgba("#2563EB", 255);
     if (pciMode) return hexToRgba("#16A34A", 245);
     return hexToRgba(getSiteBaseColor(site), 245);
-  }, [siteHasSelectedPci, siteHasWorstCell, siteHasWorstSite, showPredictions, showAlarms, predictionBySite, getWorstAlarmSeverity, selectedPci, selectedPciSiteId]);
+  }, [siteHasSelectedPci, siteHasWorstCell, siteHasWorstSite, showPredictions, showAlarms, predictionBySite, getWorstAlarmSeverity, selectedPci, selectedPciSiteId, siteIntelligenceByName, activeMapPanel, handoverRelationMap, focusMapSite]);
 
   const getCellOverlayColors = useCallback((cell, layer, sector) => {
     const baseColors = getColorBySector(sector, layer);
@@ -3701,8 +4242,8 @@ export default function MapPage() {
       setSiteDetails(null);
       return;
     }
-    const response = await fetchSiteDetails(selectedFileId, siteQuery);
-    setSiteDetails(response?.success ? response.data : null);
+    const detailResponse = await fetchSiteDetails(selectedFileId, siteQuery);
+    setSiteDetails(detailResponse?.success ? detailResponse.data : null);
   }, [selectedFileId, siteAnalyticsByName]);
 
   useEffect(() => {
@@ -3722,6 +4263,120 @@ export default function MapPage() {
     }
 
     const baseRadius = getBaseRadiusByZoom(zoomLevel);
+    /* legacy handover layer stub
+      id: "deck-handover-relations",
+      data: handoverRelationItems,
+      pickable: true,
+      getSourcePosition: (item) => item.sourcePosition,
+      getTargetPosition: (item) => item.targetPosition,
+      getColor: (item) => hexToRgba(item.color, 220),
+      getWidth: (item) => item.width,
+      widthUnits: "pixels",
+      updateTriggers: {
+        getSourcePosition: [handoverRelationItems.length],
+        getTargetPosition: [handoverRelationItems.length],
+        getColor: [handoverRelationItems.length],
+        getWidth: [handoverRelationItems.length],
+      },
+      onClick: ({ object }) => {
+        if (!object) return;
+        const targetSite = object.targetSite;
+        if (targetSite) {
+          handleSiteMarkerClick(targetSite);
+        }
+      },
+      onHover: ({ object, coordinate }) => {
+        if (!object) {
+          if (miniTooltipRef.current) {
+            miniTooltipRef.current.close();
+            miniTooltipRef.current = null;
+          }
+          return;
+        }
+        if (!miniTooltipRef.current) {
+          miniTooltipRef.current = new window.google.maps.InfoWindow({
+            pixelOffset: new window.google.maps.Size(0, -14),
+          });
+        }
+        miniTooltipRef.current.setContent(`
+          <div style="padding: 8px 10px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: white; border-radius: 10px; border: 2px solid ${object.color}; box-shadow: 0 8px 18px rgba(15,23,42,0.18);">
+            <div style="font-size: 11px; font-weight: 900; color: ${object.color}; text-transform: uppercase;">${String(object.relationType || "NEIGHBOUR").replaceAll("_", " ")}</div>
+            <div style="margin-top: 3px; font-size: 12px; font-weight: 800; color: #111827;">${object.sourceSite?.Site_Name || object.sourceSite?.SITEID || "-" } → ${object.targetSite?.Site_Name || object.targetSite?.SITEID || "-"}</div>
+            <div style="margin-top: 2px; font-size: 11px; color: #64748B;">${Number(object.distanceKm || 0).toFixed(2)} km • Score ${Number(object.relationScore || 0).toFixed(0)}</div>
+            <div style="margin-top: 4px; font-size: 10px; color: #475569;">Click to open the target site</div>
+          </div>
+        `);
+        miniTooltipRef.current.setPosition({ lat: coordinate[1], lng: coordinate[0] });
+        miniTooltipRef.current.open(map);
+      },
+    */
+
+    const handoverLineLayer =
+      visibleHandoverRelationItems.length > 0
+        ? new LineLayer({
+            id: "deck-handover-relations",
+            data: visibleHandoverRelationItems,
+            pickable: true,
+            getSourcePosition: (item) => item.sourcePosition,
+            getTargetPosition: (item) => item.targetPosition,
+            getColor: (item) => hexToRgba(item.categoryColor || item.color, 230),
+            getWidth: (item) => item.width,
+            widthUnits: "pixels",
+            onClick: ({ object }) => {
+              if (!object) return;
+              if (object.targetSite) {
+                handleSiteMarkerClick(object.targetSite);
+              }
+            },
+            onHover: ({ object, coordinate }) => {
+              if (!object) {
+                if (miniTooltipRef.current) {
+                  miniTooltipRef.current.close();
+                  miniTooltipRef.current = null;
+                }
+                return;
+              }
+              if (!miniTooltipRef.current) {
+                miniTooltipRef.current = new window.google.maps.InfoWindow({
+                  pixelOffset: new window.google.maps.Size(0, -14),
+                });
+              }
+              miniTooltipRef.current.setContent(`
+                <div style="padding: 8px 10px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: white; border-radius: 10px; border: 2px solid ${object.color}; box-shadow: 0 8px 18px rgba(15,23,42,0.18);">
+                  <div style="font-size: 11px; font-weight: 900; color: ${object.categoryColor || object.color}; text-transform: uppercase;">${object.handoverCategory || "NEIGHBOR"} HANDOVER</div>
+                  <div style="margin-top: 3px; font-size: 12px; font-weight: 800; color: #111827;">${object.sourceSite?.Site_Name || object.sourceSite?.SITEID || "-"} -> ${object.targetSite?.Site_Name || object.targetSite?.SITEID || "-"}</div>
+                  <div style="margin-top: 2px; font-size: 11px; color: #64748B;">${Number(object.distanceKm || 0).toFixed(2)} km • Score ${Number(object.relationScore || 0).toFixed(0)}</div>
+                  <div style="margin-top: 4px; font-size: 10px; color: #475569;">Click to open the target site</div>
+                </div>
+              `);
+              miniTooltipRef.current.setPosition({ lat: coordinate[1], lng: coordinate[0] });
+              miniTooltipRef.current.open(map);
+            },
+          })
+        : null;
+
+    const handoverLabelLayer =
+      visibleHandoverRelationItems.length > 0
+        ? new TextLayer({
+            id: "deck-handover-labels",
+            data: zoomLevel >= 10 ? visibleHandoverRelationItems : [],
+            pickable: false,
+            getPosition: (item) => [
+              (item.sourcePosition[0] + item.targetPosition[0]) / 2,
+              (item.sourcePosition[1] + item.targetPosition[1]) / 2,
+            ],
+            getText: (item) => `${item.handoverCategory || "NEIGHBOR"} HO`,
+            getSize: 10,
+            getColor: (item) => hexToRgba(item.categoryColor || item.color, 255),
+            getTextAnchor: "middle",
+            getAlignmentBaseline: "center",
+            fontWeight: 900,
+            background: true,
+            backgroundColor: [15, 23, 42, 220],
+            backgroundPadding: [3, 2],
+          })
+        : null;
+
     const siteLayer = new ScatterplotLayer({
       id: "deck-sites",
       data: filteredSites,
@@ -3999,15 +4654,87 @@ export default function MapPage() {
       background: false,
     });
 
-    deckOverlayRef.current.setProps({
-      layers: [
-        showCells ? cellLayer : null,
-        siteLayer,
-        worstCellMapItems.length > 0 ? worstCellLayer : null,
-        worstCellMapItems.length > 0 ? worstCellLabelLayer : null,
-        showPredictions ? predictionLayer : null,
-        showPredictions ? predictionLabelLayer : null,
-      ].filter(Boolean),
+    const intelligenceHotspotLayer =
+      visibleSiteIntelligenceMapItems.length > 0
+        ? new ScatterplotLayer({
+            id: "deck-intelligence-hotspots",
+            data: visibleSiteIntelligenceMapItems,
+            pickable: true,
+            stroked: true,
+            filled: true,
+            radiusUnits: "pixels",
+            getPosition: (item) => [Number(item.__lon), Number(item.__lat)],
+            getRadius: (item) => 7 + Math.min(11, Number(item.__issueScore || item.__impactScore || 0) / 9),
+            getFillColor: (item) => hexToRgba(item.__issueColor || "#6366F1", 150),
+            getLineColor: (item) => hexToRgba(item.__issueColor || "#6366F1", 245),
+            getLineWidth: 2,
+            lineWidthUnits: "pixels",
+            onClick: ({ object }) => {
+              if (!object) return;
+              const site = object.__resolvedSite || resolveMapSite(object.site || object.siteName || object.siteId);
+              if (site) {
+                handleSiteMarkerClick(site);
+              }
+            },
+            onHover: ({ object, coordinate }) => {
+              if (!object) {
+                if (miniTooltipRef.current) {
+                  miniTooltipRef.current.close();
+                  miniTooltipRef.current = null;
+                }
+                return;
+              }
+              if (!miniTooltipRef.current) {
+                miniTooltipRef.current = new window.google.maps.InfoWindow({
+                  pixelOffset: new window.google.maps.Size(0, -16),
+                });
+              }
+              miniTooltipRef.current.setContent(`
+                <div style="padding: 8px 10px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: white; border-radius: 10px; border: 2px solid ${object.__issueColor}; box-shadow: 0 8px 18px rgba(15,23,42,0.18);">
+                  <div style="font-size: 11px; font-weight: 900; color: ${object.__issueColor}; text-transform: uppercase;">${object.__issueLabel} / ${String(object.status || "NORMAL").toUpperCase()}</div>
+                  <div style="margin-top: 3px; font-size: 12px; font-weight: 800; color: #111827;">${object.site || object.siteName || object.siteId || "-"}</div>
+                  <div style="margin-top: 2px; font-size: 11px; color: #64748B;">Impact ${Number(object.__impactScore || 0).toFixed(1)}% • PCI ${Number(Math.max(object.pciCollisionScore || 0, object.pciConfusionScore || 0)).toFixed(1)}% • HO ${Number(object.handoverRisk || 0).toFixed(1)}% • OVR ${Number(object.overshootingScore || 0).toFixed(1)}%</div>
+                  <div style="margin-top: 4px; font-size: 10px; color: #475569;">Click to open the site</div>
+                </div>
+              `);
+              miniTooltipRef.current.setPosition({ lat: coordinate[1], lng: coordinate[0] });
+              miniTooltipRef.current.open(map);
+            },
+          })
+        : null;
+
+    const intelligenceHotspotLabelLayer =
+      visibleSiteIntelligenceMapItems.length > 0
+        ? new TextLayer({
+            id: "deck-intelligence-hotspot-labels",
+            data: visibleSiteIntelligenceMapItems,
+            pickable: false,
+            getPosition: (item) => [Number(item.__lon), Number(item.__lat)],
+            getText: (item) => item.__issueShortLabel || item.__issueLabel || "IMP",
+            getSize: 11,
+            getColor: [255, 255, 255, 255],
+            getTextAnchor: "middle",
+            getAlignmentBaseline: "center",
+            fontWeight: 900,
+            background: true,
+            backgroundColor: [15, 23, 42, 190],
+            backgroundPadding: [4, 2],
+          })
+        : null;
+
+      deckOverlayRef.current.setProps({
+        layers: [
+          showCells ? cellLayer : null,
+          siteLayer,
+          intelligenceHotspotLayer,
+          intelligenceHotspotLabelLayer,
+          handoverLineLayer,
+          handoverLabelLayer,
+          worstCellMapItems.length > 0 ? worstCellLayer : null,
+          worstCellMapItems.length > 0 ? worstCellLabelLayer : null,
+          showPredictions ? predictionLayer : null,
+          showPredictions ? predictionLabelLayer : null,
+        ].filter(Boolean),
     });
   }, [
     map,
@@ -4018,6 +4745,7 @@ export default function MapPage() {
     predictionMapItems,
     showCells,
     zoomLevel,
+    visibleHandoverRelationItems,
     selectedSite,
     selectedCell,
     selectedPci,
@@ -4025,6 +4753,9 @@ export default function MapPage() {
     showWorstSites,
     showPredictions,
     showAlarms,
+    activeMapPanel,
+    visibleSiteIntelligenceMapItems,
+    handoverOverlayEnabled,
     siteMarkerScale,
     worstCells.length,
     displayPredictions.length,
@@ -4046,6 +4777,64 @@ export default function MapPage() {
     getCellSector,
     cellMatchesVisibleSelectedPci,
   ]);
+
+  useEffect(() => {
+    handoverPolylinesRef.current.forEach((polyline) => polyline.setMap(null));
+    handoverPolylinesRef.current.clear();
+
+    if (!map || !window.google || visibleHandoverRelationItems.length === 0) return;
+
+    visibleHandoverRelationItems.forEach((item, index) => {
+      const polyline = new window.google.maps.Polyline({
+        path: [
+          { lat: Number(item.sourcePosition[1]), lng: Number(item.sourcePosition[0]) },
+          { lat: Number(item.targetPosition[1]), lng: Number(item.targetPosition[0]) },
+        ],
+        geodesic: true,
+        strokeColor: item.categoryColor || item.color,
+        strokeOpacity: 0.85,
+        strokeWeight: item.width,
+        map,
+        zIndex: 91000 + index,
+      });
+
+      polyline.addListener("click", () => {
+        if (item.targetSite) {
+          handleSiteMarkerClick(item.targetSite);
+        }
+      });
+
+      polyline.addListener("mouseover", () => {
+        if (!miniTooltipRef.current) {
+          miniTooltipRef.current = new window.google.maps.InfoWindow({
+            pixelOffset: new window.google.maps.Size(0, -14),
+          });
+        }
+        miniTooltipRef.current.setContent(`
+          <div style="padding: 8px 10px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: white; border-radius: 10px; border: 2px solid ${item.color}; box-shadow: 0 8px 18px rgba(15,23,42,0.18);">
+            <div style="font-size: 11px; font-weight: 900; color: ${item.categoryColor || item.color}; text-transform: uppercase;">${item.handoverCategory || "NEIGHBOR"} HANDOVER</div>
+            <div style="margin-top: 3px; font-size: 12px; font-weight: 800; color: #111827;">${item.sourceSite?.Site_Name || item.sourceSite?.SITEID || "-"} → ${item.targetSite?.Site_Name || item.targetSite?.SITEID || "-"}</div>
+            <div style="margin-top: 2px; font-size: 11px; color: #64748B;">${Number(item.distanceKm || 0).toFixed(2)} km • Score ${Number(item.relationScore || 0).toFixed(0)}</div>
+            <div style="margin-top: 4px; font-size: 10px; color: #475569;">Click to open the target site</div>
+          </div>
+        `);
+        miniTooltipRef.current.setPosition({
+          lat: (Number(item.sourcePosition[1]) + Number(item.targetPosition[1])) / 2,
+          lng: (Number(item.sourcePosition[0]) + Number(item.targetPosition[0])) / 2,
+        });
+        miniTooltipRef.current.open(map);
+      });
+      
+      polyline.addListener("mouseout", () => {
+        if (miniTooltipRef.current) {
+          miniTooltipRef.current.close();
+          miniTooltipRef.current = null;
+        }
+      });
+
+      handoverPolylinesRef.current.set(`${item.targetSite?.SITEID || index}`, polyline);
+    });
+  }, [map, activeMapPanel, visibleHandoverRelationItems, handleSiteMarkerClick]);
 
   // Render cells
   useEffect(() => {
@@ -4658,6 +5447,18 @@ export default function MapPage() {
                 lbPredictionControlProps={lbPredictionControlProps}
                 showAlarms={showAlarms}
                 onToggleAlarms={() => setShowAlarms(!showAlarms)}
+                showTechHandovers={showTechHandovers}
+                onToggleTechHandovers={() => setShowTechHandovers((value) => !value)}
+                showBandHandovers={showBandHandovers}
+                onToggleBandHandovers={() => setShowBandHandovers((value) => !value)}
+                showPciHandovers={showPciHandovers}
+                onTogglePciHandovers={() => setShowPciHandovers((value) => !value)}
+                showPciIssues={showPciIssues}
+                onTogglePciIssues={() => setShowPciIssues((value) => !value)}
+                showOvershooting={showOvershooting}
+                onToggleOvershooting={() => setShowOvershooting((value) => !value)}
+                showMissingNeighbours={showMissingNeighbours}
+                onToggleMissingNeighbours={() => setShowMissingNeighbours((value) => !value)}
               />
             </div>
           )}
@@ -4976,6 +5777,60 @@ export default function MapPage() {
                         ))}
                       </div>
                     )}
+                    {asArray(siteIntelligence?.data).length > 0 && (() => {
+                      const selectedIntelligence = asArray(siteIntelligence.data).find((item) => {
+                        const siteLabel = String(item.site || "").toLowerCase();
+                        const detailSite = String(siteDetails.site || selectedSite.Site_Name || selectedSite.SITEID || "").toLowerCase();
+                        return siteLabel === detailSite || siteLabel === String(selectedSite?.SITEID || "").toLowerCase();
+                      });
+                      if (!selectedIntelligence) return null;
+                      return (
+                        <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="text-xs font-bold uppercase text-slate-500">Site Intelligence</div>
+                            <span className={`rounded-full border px-2 py-1 text-[10px] font-bold ${statusClasses[selectedIntelligence.status] || statusClasses.GOOD}`}>
+                              {selectedIntelligence.status || "GOOD"}
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2 text-center">
+                            <div className="rounded-lg bg-white p-2">
+                              <div className="text-[10px] font-bold uppercase text-slate-500">Impact</div>
+                              <div className="text-sm font-black text-slate-900">{percent(selectedIntelligence.impactScore)}</div>
+                            </div>
+                            <div className="rounded-lg bg-white p-2">
+                              <div className="text-[10px] font-bold uppercase text-slate-500">PCI Collision</div>
+                              <div className="text-sm font-black text-slate-900">{percent(Math.max(selectedIntelligence.pciCollisionScore || 0, selectedIntelligence.pciConfusionScore || 0))}</div>
+                            </div>
+                            <div className="rounded-lg bg-white p-2">
+                              <div className="text-[10px] font-bold uppercase text-slate-500">PCI Confusion</div>
+                              <div className="text-sm font-black text-slate-900">{percent(selectedIntelligence.pciConfusionScore)}</div>
+                            </div>
+                            <div className="rounded-lg bg-white p-2">
+                              <div className="text-[10px] font-bold uppercase text-slate-500">Handover</div>
+                              <div className="text-sm font-black text-slate-900">{percent(selectedIntelligence.handoverRisk)}</div>
+                            </div>
+                            <div className="rounded-lg bg-white p-2">
+                              <div className="text-[10px] font-bold uppercase text-slate-500">Overshoot</div>
+                              <div className="text-sm font-black text-slate-900">{percent(selectedIntelligence.overshootingScore)}</div>
+                            </div>
+                            <div className="rounded-lg bg-white p-2">
+                              <div className="text-[10px] font-bold uppercase text-slate-500">Neighbors</div>
+                              <div className="text-sm font-black text-slate-900">{percent(selectedIntelligence.missingNeighborScore)}</div>
+                            </div>
+                          </div>
+                          <div className="rounded-lg bg-white p-2 text-xs text-slate-600">
+                            Latest observed: <b>{selectedIntelligence.latestObservedAt || "-"}</b>
+                          </div>
+                          <div className="space-y-1">
+                            {asArray(selectedIntelligence.recommendations).slice(0, 3).map((item, index) => (
+                              <div key={`${item}-${index}`} className="rounded-lg bg-white px-2 py-1.5 text-xs text-slate-700">
+                                {item}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
                 )}
               </div>
@@ -5137,6 +5992,45 @@ export default function MapPage() {
           tabs={analyticsTabs}
           activeTab={activeMapPanel}
           onTabChange={setActiveMapPanel}
+          headerChildren={
+            activeMapPanel === "clusters" ? (
+              <div className="rounded-2xl border border-cyan-400/30 bg-cyan-50 px-4 py-3 text-slate-900 shadow-lg">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-[11px] font-black uppercase tracking-wider text-cyan-700">Cluster View Loaded</div>
+                    <div className="text-sm font-black text-slate-900">
+                      {siteIntelligenceRows.length > 0
+                        ? `${siteIntelligenceRows.length} sites, ${siteIntelligence?.clusterCount || clusterSummaryRows.length} cluster group(s)`
+                        : "No site intelligence rows returned for this KPI file"}
+                    </div>
+                  </div>
+                  <div className="rounded-full border border-cyan-200 bg-white px-2.5 py-1 text-[10px] font-bold text-cyan-700">
+                    {siteIntelligenceTimestampLabel}
+                  </div>
+                </div>
+                {primarySiteIntelligence && (
+                  <div className="mt-3 grid grid-cols-3 gap-2">
+                    <div className="rounded-xl bg-white px-2 py-2 text-center shadow-sm">
+                      <div className="text-[10px] font-bold uppercase text-slate-500">Impact</div>
+                      <div className="text-sm font-black text-violet-700">{Number(primarySiteIntelligence.impactScore || 0).toFixed(1)}%</div>
+                    </div>
+                    <div className="rounded-xl bg-white px-2 py-2 text-center shadow-sm">
+                      <div className="text-[10px] font-bold uppercase text-slate-500">PCI + HO</div>
+                      <div className="text-sm font-black text-red-700">
+                        {Number(Math.max(primarySiteIntelligence.pciCollisionScore || 0, primarySiteIntelligence.pciConfusionScore || 0)).toFixed(1)}%
+                        {" / "}
+                        {Number(primarySiteIntelligence.handoverRisk || 0).toFixed(1)}%
+                      </div>
+                    </div>
+                    <div className="rounded-xl bg-white px-2 py-2 text-center shadow-sm">
+                      <div className="text-[10px] font-bold uppercase text-slate-500">Neighbors</div>
+                      <div className="text-sm font-black text-emerald-700">{Number(primarySiteIntelligence.missingNeighborScore || 0).toFixed(1)}%</div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : null
+          }
         >
           <div className="space-y-4">
             {activeMapPanel === "overview" && (
@@ -5190,6 +6084,385 @@ export default function MapPage() {
                 </div>
               </div>
             </div>
+
+            <div className="rounded-2xl border border-slate-800/80 bg-slate-900/60 p-4 shadow-lg">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Site Intelligence</div>
+                  <div className="text-lg font-black text-white">PCI, Handover, Overshoot, Neighbor</div>
+                </div>
+                <span className="rounded-full border border-blue-500/30 bg-blue-950/30 px-2 py-1 text-[10px] font-bold text-blue-300">
+                  {formatNumber(siteIntelligenceRows.length)} rows
+                </span>
+              </div>
+              {siteIntelligenceRows.length === 0 ? (
+                <div className="rounded-xl border border-slate-800 bg-slate-950/50 px-3 py-2 text-xs text-slate-400">
+                  No site intelligence available for the selected KPI file.
+                </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="rounded-xl border border-red-500/30 bg-red-950/30 p-3">
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-red-400">PCI collision</div>
+                      <div className="mt-1 text-2xl font-black text-red-300">
+                        {Number(siteIntelligenceRows[0]?.pciCollisionScore || 0).toFixed(1)}%
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-orange-500/30 bg-orange-950/30 p-3">
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-orange-400">Handover risk</div>
+                      <div className="mt-1 text-2xl font-black text-orange-300">
+                        {Number(siteIntelligenceRows[0]?.handoverRisk || 0).toFixed(1)}%
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-amber-500/30 bg-amber-950/30 p-3">
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-amber-400">Overshoot</div>
+                      <div className="mt-1 text-2xl font-black text-amber-300">
+                        {Number(siteIntelligenceRows[0]?.overshootingScore || 0).toFixed(1)}%
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-emerald-500/30 bg-emerald-950/30 p-3">
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">Missing neighbors</div>
+                      <div className="mt-1 text-2xl font-black text-emerald-300">
+                        {Number(siteIntelligenceRows[0]?.missingNeighborScore || 0).toFixed(1)}%
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 rounded-xl border border-slate-700 bg-slate-950/70 p-3">
+                    <div className="mb-2 text-[11px] font-bold uppercase tracking-wider text-slate-400">Top recommendations</div>
+                    <div className="space-y-2">
+                      {asArray(siteIntelligenceRows[0]?.recommendations).slice(0, 3).map((item, index) => (
+                        <div key={`${item}-${index}`} className="rounded-lg bg-slate-900 px-3 py-2 text-xs text-slate-200">
+                          {item}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {activeMapPanel === "clusters" && (
+              <div className="space-y-3">
+                <div className="rounded-2xl border border-slate-800/80 bg-slate-900/70 p-4 shadow-lg">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Clusterization</div>
+                      <div className="text-lg font-black text-white">Impact-based site clusters</div>
+                    </div>
+                    <span className="rounded-full border border-emerald-500/30 bg-emerald-900/30 px-2 py-1 text-[10px] font-bold text-emerald-300">
+                      {formatNumber(siteIntelligenceRows.length)} sites
+                    </span>
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    <div className="rounded-xl border border-blue-500/30 bg-blue-950/30 p-3">
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-blue-400">Clusters</div>
+                      <div className="mt-1 text-2xl font-black text-blue-300">{formatNumber(clusterSummaryRows.length)}</div>
+                    </div>
+                    <div className="rounded-xl border border-red-500/30 bg-red-950/30 p-3">
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-red-400">Critical sites</div>
+                      <div className="mt-1 text-2xl font-black text-red-300">
+                        {formatNumber(siteIntelligenceRows.filter((item) => String(item.status || "").toUpperCase() === "CRITICAL").length)}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 rounded-xl border border-slate-800 bg-slate-950/70 p-3">
+                    <div className="mb-2 text-[10px] font-black uppercase tracking-wider text-slate-400">Map handover categories</div>
+                    <div className="grid grid-cols-2 gap-2 text-[11px] font-bold">
+                      {[
+                        ["PCI", handoverCategoryCounts.PCI, handoverCategoryColors.PCI],
+                        ["Band", handoverCategoryCounts.BAND, handoverCategoryColors.BAND],
+                        ["Technology", handoverCategoryCounts.TECHNOLOGY, handoverCategoryColors.TECHNOLOGY],
+                        ["Operator", handoverCategoryCounts.OPERATOR, handoverCategoryColors.OPERATOR],
+                        ["Neighbor", handoverCategoryCounts.NEIGHBOR, handoverCategoryColors.NEIGHBOR],
+                      ].map(([label, count, color]) => (
+                        <div key={label} className="flex items-center justify-between rounded-lg bg-slate-900 px-2 py-1.5">
+                          <span className="flex items-center gap-1.5 text-slate-300"><span className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} />{label}</span>
+                          <span className="text-white">{formatNumber(count)}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="mt-2 text-[10px] text-slate-500">Operator classification appears when the uploaded data contains operator, carrier, MNO, or PLMN fields.</div>
+                  </div>
+                  <div className="mt-3 text-[11px] leading-5 text-slate-400">
+                    Marker colors follow the site impact score. Click a cluster or site row to jump the map to that location.
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-cyan-500/30 bg-cyan-950/30 p-4 shadow-lg">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-[11px] font-bold uppercase tracking-wider text-cyan-300">Map Intelligence Snapshot</div>
+                      <div className="text-lg font-black text-white">PCI, handover, cluster, and neighbor context</div>
+                    </div>
+                    <div className="rounded-full border border-cyan-400/30 bg-cyan-900/30 px-2.5 py-1 text-[10px] font-bold text-cyan-200">
+                      {siteIntelligenceTimestampLabel}
+                    </div>
+                  </div>
+                  {primarySiteIntelligence ? (
+                    <div className="mt-3 grid grid-cols-2 gap-2">
+                      <div className="rounded-xl border border-red-500/30 bg-red-950/30 p-3">
+                        <div className="text-[10px] font-bold uppercase tracking-wider text-red-400">PCI collision</div>
+                        <div className="mt-1 text-2xl font-black text-red-300">
+                          {Number(primarySiteIntelligence.pciCollisionScore || 0).toFixed(1)}%
+                        </div>
+                      </div>
+                      <div className="rounded-xl border border-orange-500/30 bg-orange-950/30 p-3">
+                        <div className="text-[10px] font-bold uppercase tracking-wider text-orange-400">PCI confusion</div>
+                        <div className="mt-1 text-2xl font-black text-orange-300">
+                          {Number(primarySiteIntelligence.pciConfusionScore || 0).toFixed(1)}%
+                        </div>
+                      </div>
+                      <div className="rounded-xl border border-amber-500/30 bg-amber-950/30 p-3">
+                        <div className="text-[10px] font-bold uppercase tracking-wider text-amber-400">Handover risk</div>
+                        <div className="mt-1 text-2xl font-black text-amber-300">
+                          {Number(primarySiteIntelligence.handoverRisk || 0).toFixed(1)}%
+                        </div>
+                      </div>
+                      <div className="rounded-xl border border-emerald-500/30 bg-emerald-950/30 p-3">
+                        <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">Missing neighbors</div>
+                        <div className="mt-1 text-2xl font-black text-emerald-300">
+                          {Number(primarySiteIntelligence.missingNeighborScore || 0).toFixed(1)}%
+                        </div>
+                      </div>
+                      <div className="rounded-xl border border-blue-500/30 bg-blue-950/30 p-3">
+                        <div className="text-[10px] font-bold uppercase tracking-wider text-blue-400">Overshoot</div>
+                        <div className="mt-1 text-2xl font-black text-blue-300">
+                          {Number(primarySiteIntelligence.overshootingScore || 0).toFixed(1)}%
+                        </div>
+                      </div>
+                      <div className="rounded-xl border border-violet-500/30 bg-violet-950/30 p-3">
+                        <div className="text-[10px] font-bold uppercase tracking-wider text-violet-400">Impact</div>
+                        <div className="mt-1 text-2xl font-black text-violet-300">
+                          {Number(primarySiteIntelligence.impactScore || 0).toFixed(1)}%
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="mt-3 rounded-xl border border-slate-800 bg-slate-950/50 px-3 py-2 text-xs text-slate-400">
+                      No site intelligence snapshot is available yet for the current KPI file.
+                    </div>
+                  )}
+                </div>
+
+                <div className="rounded-2xl border border-slate-800/80 bg-slate-900/60 p-4 shadow-lg">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <div className="text-xs font-black uppercase tracking-wider text-slate-300">Cluster Summary</div>
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{siteIntelligence?.clusterCount || clusterSummaryRows.length} groups</div>
+                  </div>
+                  {clusterSummaryRows.length === 0 ? (
+                    <div className="rounded-xl border border-slate-800 bg-slate-950/50 px-3 py-2 text-xs text-slate-400">
+                      No cluster data available for the selected KPI file.
+                    </div>
+                  ) : (
+                    <div className="max-h-60 space-y-2 overflow-y-auto pr-1">
+                      {clusterSummaryRows.slice(0, 12).map((cluster) => (
+                        <button
+                          key={cluster.cluster}
+                          type="button"
+                          onClick={() => {
+                            const match = siteIntelligenceRows.find((item) => normalizeKey(item.cluster) === normalizeKey(cluster.cluster));
+                            if (!match) return;
+                            const mapSite = uniqueSites.find(
+                              (site) =>
+                                normalizeKey(site.Site_Name) === normalizeKey(match.site) ||
+                                normalizeKey(site.SITEID) === normalizeKey(match.site) ||
+                                normalizeKey(site.SITEID) === normalizeKey(match.siteId),
+                            );
+                            if (mapSite) {
+                              handleSiteMarkerClick(mapSite);
+                            }
+                          }}
+                          className="w-full rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-2 text-left hover:border-blue-500/40 hover:bg-slate-900"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="truncate text-xs font-bold text-white">{cluster.cluster || "Unclustered"}</span>
+                            <span className="text-[10px] font-bold text-slate-400">{formatNumber(cluster.siteCount)} sites</span>
+                          </div>
+                          <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-slate-400">
+                            <span>Avg impact {Number(cluster.averageImpactScore || 0).toFixed(1)}%</span>
+                            <span>Critical {formatNumber(cluster.criticalSites || 0)}</span>
+                          </div>
+                          <div className="mt-2 h-1.5 rounded-full bg-slate-800">
+                            <div
+                              className="h-1.5 rounded-full bg-blue-500"
+                              style={{ width: `${Math.max(0, Math.min(100, Number(cluster.averageImpactScore || 0)))}%` }}
+                            />
+                          </div>
+                          <div className="mt-1 text-[11px] text-slate-500">
+                            Worst site: {cluster.worstSite || "-"} ({Number(cluster.worstImpactScore || 0).toFixed(1)}%)
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="rounded-2xl border border-slate-800/80 bg-slate-900/60 p-4 shadow-lg">
+                  <div className="mb-3 text-xs font-black uppercase tracking-wider text-slate-300">Top Risk Sites</div>
+                  {siteIntelligenceRows.length === 0 ? (
+                    <div className="rounded-xl border border-slate-800 bg-slate-950/50 px-3 py-2 text-xs text-slate-400">
+                      No site intelligence rows returned yet.
+                    </div>
+                  ) : (
+                    <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
+                      {siteIntelligenceRows.slice(0, 20).map((item, index) => {
+                        const tone = getIntelligenceTone(item.status, item.impactScore);
+                        return (
+                          <button
+                            key={`${item.site}-${index}`}
+                            type="button"
+                            onClick={() => {
+                              const mapSite = uniqueSites.find(
+                                (site) =>
+                                  normalizeKey(site.Site_Name) === normalizeKey(item.site) ||
+                                  normalizeKey(site.SITEID) === normalizeKey(item.site) ||
+                                  normalizeKey(site.SITEID) === normalizeKey(item.siteId),
+                              );
+                              if (mapSite) handleSiteMarkerClick(mapSite);
+                            }}
+                            className="w-full rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-2 text-left hover:border-blue-500/40 hover:bg-slate-900"
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="truncate text-xs font-bold text-white">#{item.rank || index + 1} {item.site || "-"}</span>
+                              <span
+                                className="rounded-full px-2 py-0.5 text-[10px] font-bold text-white"
+                                style={{ backgroundColor: tone.fill }}
+                              >
+                                {item.status || "GOOD"}
+                              </span>
+                            </div>
+                            <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-slate-400">
+                              <span>Cluster: {item.cluster || "Unclustered"}</span>
+                              <span>Impact {Number(item.impactScore || 0).toFixed(1)}%</span>
+                            </div>
+                            <div className="mt-1 text-[11px] text-slate-500">
+                              PCI {Number(item.pciCollisionScore || 0).toFixed(1)} | Confusion {Number(item.pciConfusionScore || 0).toFixed(1)} | HO {Number(item.handoverRisk || 0).toFixed(1)} | Overshoot {Number(item.overshootingScore || 0).toFixed(1)} | Neigh {Number(item.missingNeighborScore || 0).toFixed(1)}
+                            </div>
+                            <div className="mt-2 space-y-1">
+                              {asArray(item.recommendations).slice(0, 2).map((rec, recIndex) => (
+                                <div key={`${item.site}-${recIndex}`} className="rounded-lg bg-slate-900 px-2 py-1 text-[11px] text-slate-300">
+                                  {rec}
+                                </div>
+                              ))}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {activeMapPanel === "handover" && (
+              <div className="space-y-3">
+                <div className="rounded-2xl border border-slate-800/80 bg-slate-900/70 p-4 shadow-lg">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-[11px] font-bold uppercase tracking-wider text-cyan-400">Handover Intelligence</div>
+                      <div className="text-lg font-black text-white">
+                        {focusMapSite ? `${focusMapSite.Site_Name || focusMapSite.SITEID} on map` : "Select a site to focus handover relations"}
+                      </div>
+                    </div>
+                    <span className="rounded-full border border-cyan-500/30 bg-cyan-950/30 px-2.5 py-1 text-[10px] font-bold text-cyan-200">
+                      {siteIntelligenceTimestampLabel}
+                    </span>
+                  </div>
+
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    <div className="rounded-xl border border-blue-500/30 bg-blue-950/30 p-3">
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-blue-400">PCI handover</div>
+                      <div className="mt-1 text-2xl font-black text-blue-300">{formatNumber(handoverRelationCounts.samePci)}</div>
+                      <div className="text-[11px] text-slate-400">Same PCI neighbour links</div>
+                    </div>
+                    <div className="rounded-xl border border-emerald-500/30 bg-emerald-950/30 p-3">
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">Band handover</div>
+                      <div className="mt-1 text-2xl font-black text-emerald-300">{formatNumber(handoverBandCount)}</div>
+                      <div className="text-[11px] text-slate-400">Neighbour band differs from focus site</div>
+                    </div>
+                    <div className="rounded-xl border border-violet-500/30 bg-violet-950/30 p-3">
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-violet-400">Technology handover</div>
+                      <div className="mt-1 text-2xl font-black text-violet-300">{formatNumber(handoverTechnologyCount)}</div>
+                      <div className="text-[11px] text-slate-400">Technology differs from focus site</div>
+                    </div>
+                    <div className="rounded-xl border border-amber-500/30 bg-amber-950/30 p-3">
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-amber-400">Facing / cluster</div>
+                      <div className="mt-1 text-2xl font-black text-amber-300">{formatNumber(handoverRelationCounts.facing + handoverRelationCounts.sameCluster)}</div>
+                      <div className="text-[11px] text-slate-400">Potential handover paths on map</div>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+                    <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">HO Success</div>
+                      <div className="mt-1 text-xl font-black text-white">{Number(focusSiteIntelligence?.handoverSuccessRate || 0).toFixed(1)}%</div>
+                    </div>
+                    <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Attempt Pressure</div>
+                      <div className="mt-1 text-xl font-black text-white">{Number(focusSiteIntelligence?.handoverAttemptPressure || 0).toFixed(1)}%</div>
+                    </div>
+                    <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Failure Pressure</div>
+                      <div className="mt-1 text-xl font-black text-white">{Number(focusSiteIntelligence?.handoverFailurePressure || 0).toFixed(1)}%</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-slate-800/80 bg-slate-900/60 p-4 shadow-lg">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Handover Relations</div>
+                      <div className="text-lg font-black text-white">PCI, band, and technology links shown on the map</div>
+                    </div>
+                    <span className="rounded-full border border-red-500/30 bg-red-950/30 px-2.5 py-1 text-[10px] font-bold text-red-200">
+                      {formatNumber(handoverRelationItems.length)} relations
+                    </span>
+                  </div>
+
+                  {handoverRelationItems.length === 0 ? (
+                    <div className="rounded-xl border border-slate-800 bg-slate-950/50 px-3 py-2 text-xs text-slate-400">
+                      No handover relations found yet. Click a site marker or switch to the Handover tab after loading site intelligence.
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {handoverRelationItems.map((item, index) => (
+                        <button
+                          key={`${item.targetSite?.SITEID || index}`}
+                          type="button"
+                          onClick={() => handleSiteMarkerClick(item.targetSite)}
+                          className="w-full rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-2 text-left hover:border-slate-500 hover:bg-slate-900"
+                          style={{ boxShadow: `inset 0 0 0 1px ${item.color}22` }}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="truncate text-xs font-black text-white">
+                              {item.sourceSite?.SITEID || "-"} {"->"} {item.targetSite?.SITEID || "-"}
+                            </span>
+                            <span
+                              className="rounded-full px-2 py-0.5 text-[10px] font-black text-white"
+                              style={{ backgroundColor: item.color }}
+                            >
+                              {item.handoverCategory || "NEIGHBOR"} HANDOVER
+                            </span>
+                          </div>
+                          <div className="mt-1 flex flex-wrap gap-2 text-[11px] text-slate-400">
+                            <span>PCI {item.pciOverlap || 0}</span>
+                            <span>Band {item.targetSite?.band || item.targetSite?.Band || "-"}</span>
+                            <span>Tech {item.targetSite?.technology || item.targetSite?.Tech || "-"}</span>
+                            <span>{item.distanceKm == null ? "-" : `${Number(item.distanceKm).toFixed(2)} km`}</span>
+                            <span>Score {Number(item.relationScore || 0).toFixed(0)}</span>
+                          </div>
+                          <div className="mt-1 text-[11px] text-slate-500">
+                            {item.targetSite?.recommendation || item.recommendation || "Click to focus this neighbour on the map."}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             {selectedPci && (
               <div className="rounded-2xl border border-red-500/30 bg-red-950/30 p-4 shadow-lg">
@@ -5517,6 +6790,10 @@ export default function MapPage() {
             selectedPciCount={selectedPciCount}
             samePciSiteCount={pciVisibleSites.length}
             pciLayerLabel={pciLayerTitle}
+            showHandover={visibleHandoverRelationItems.length > 0}
+            handoverRelationCounts={handoverRelationCounts}
+            showIssueMarkers={visibleSiteIntelligenceMapItems.length > 0}
+            issueMarkerCounts={visibleIntelligenceIssueCounts}
           />
 
           {/* Map controls moved into the Filter and Analytics panels. */}

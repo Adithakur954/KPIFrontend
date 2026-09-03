@@ -48,6 +48,26 @@ export async function fetchSiteDetails(fileId, site) {
   }
 }
 
+export async function fetchSiteIntelligence(fileId, siteFileId, limit = 20) {
+  try {
+    return await apiFetch("sites/intelligence", {
+      method: "GET",
+      query: {
+        fileId,
+        siteFileId: siteFileId || undefined,
+        limit,
+      },
+    });
+  } catch (error) {
+    console.error("[siteAnalyticsService] fetchSiteIntelligence failed", error);
+    return {
+      success: false,
+      message: error.message || "Failed to fetch site intelligence",
+      data: null,
+    };
+  }
+}
+
 export async function fetchSitePredictionSummary(fileId) {
   try {
     return await apiFetch("site-prediction/summary", {

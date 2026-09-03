@@ -517,12 +517,26 @@ export default function DashboardPage() {
       if (response?.success) {
         const files = response.data || [];
         setDashboardFileOptions(files);
-        if (
+        const latestFileId = files.length ? String(files[0].id) : "";
+        const currentFileExists =
           selectedDashboardFileId &&
-          !files.some((file) => String(file.id) === String(selectedDashboardFileId))
-        ) {
-          setSelectedDashboardFileId("");
+          files.some((file) => String(file.id) === String(selectedDashboardFileId));
+
+        if (!latestFileId) {
+          hasReconciledDashboardScopeRef.current = true;
+          setIsDashboardScopeReady(true);
+          if (selectedDashboardFileId) {
+            setSelectedDashboardFileId("");
+          }
+          return;
         }
+
+        if (!currentFileExists) {
+          setSelectedDashboardFileId(latestFileId);
+        }
+
+        hasReconciledDashboardScopeRef.current = true;
+        setIsDashboardScopeReady(true);
       } else {
         setSelectedDashboardFileId("");
         setIsDashboardScopeReady(true);
@@ -1081,7 +1095,7 @@ export default function DashboardPage() {
                       <span className="text-slate-400">Loading...</span>
                     </div>
                   ) : (
-                    <div className="text-3xl flex justify-center font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-slate-900 to-slate-700 leading-tight">
+                    <div className="text-3xl flex justify-center font-extrabold text-slate-900 leading-tight">
                       {metric.value?.toLocaleString() ?? "—"}
                     </div>
                   )}
@@ -1326,11 +1340,23 @@ export default function DashboardPage() {
                   );
                 })}
               </div>
-            ) : (
+            ) : loading ? (
               <div className="flex flex-col items-center justify-center py-24 gap-5">
                 <Loader2 className="w-16 h-16 text-blue-500 animate-spin" />
                 <p className="text-lg text-slate-500 font-semibold">
                   Loading performance metrics...
+                </p>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-24 gap-5">
+                <AlertCircle className="w-14 h-14 text-slate-400" />
+                <p className="text-lg text-slate-500 font-semibold">
+                  No performance data available for the current scope.
+                </p>
+                <p className="text-sm text-slate-400 max-w-xl text-center">
+                  If you just started the backend, make sure the local license is
+                  valid and that you are signed in. If there is no KPI upload yet,
+                  import one to populate the dashboard.
                 </p>
               </div>
             )}

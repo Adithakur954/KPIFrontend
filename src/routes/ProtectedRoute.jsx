@@ -1,7 +1,7 @@
-import { Navigate, Outlet } from "react-router-dom";
 import { useAuth } from "@/shared/context/AuthContext";
 import { Loader2 } from "lucide-react";
 import MainLayout from "@/shared/components/layout/MainLayout";
+import { Navigate, Outlet } from "react-router-dom";
 
 export default function ProtectedRoute() {
   const { isAuthenticated, loading } = useAuth();

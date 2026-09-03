@@ -17,6 +17,10 @@ export default function MapLayerLegend({
   selectedPciCount = 0,
   samePciSiteCount = 0,
   pciLayerLabel = "Other same-PCI sites",
+  showHandover = false,
+  handoverRelationCounts = {},
+  showIssueMarkers = false,
+  issueMarkerCounts = {},
 }) {
   const predictionItems = [
     ["Load Balance", "LOAD_BALANCE"],
@@ -36,7 +40,7 @@ export default function MapLayerLegend({
 
   const showPciLegend = Boolean(selectedPci);
 
-  if (!showCells && !showWorstSites && !showPredictions && !showAlarms && !showPciLegend) return null;
+  if (!showCells && !showWorstSites && !showPredictions && !showAlarms && !showPciLegend && !showHandover && !showIssueMarkers) return null;
 
   return (
     <div className="absolute bottom-6 right-6 z-10 w-72 max-w-[calc(100vw-2rem)] rounded-2xl border border-slate-800/80 bg-slate-950/90 p-3.5 text-slate-100 shadow-2xl backdrop-blur-xl ring-1 ring-white/10">
@@ -117,6 +121,80 @@ export default function MapLayerLegend({
                 <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-emerald-500" />
                 <span className="truncate text-[11px] font-bold text-slate-300">Other visible sites</span>
               </div>
+            </div>
+          </div>
+        )}
+
+        {showHandover && (
+          <div className="rounded-xl border border-cyan-500/20 bg-cyan-950/30 p-2.5">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <div className="flex min-w-0 items-center gap-1.5 text-xs font-black uppercase tracking-wider text-cyan-400">
+                <Sparkles className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate">Handover Paths</span>
+              </div>
+              <span className="rounded-full bg-cyan-600/30 px-2 py-0.5 text-xs font-black text-cyan-200 border border-cyan-500/40">
+                {Number(handoverRelationCounts.total || 0)}
+              </span>
+            </div>
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between gap-2 rounded-lg border border-slate-800 bg-slate-900/80 px-2.5 py-1">
+                <div className="flex min-w-0 items-center gap-1.5">
+                  <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-red-500" />
+                  <span className="truncate text-[11px] font-bold text-slate-300">PCI relations</span>
+                </div>
+                <span className="text-[11px] font-black text-white">{Number(handoverRelationCounts.samePci || 0)}</span>
+              </div>
+              <div className="flex items-center justify-between gap-2 rounded-lg border border-slate-800 bg-slate-900/80 px-2.5 py-1">
+                <div className="flex min-w-0 items-center gap-1.5">
+                  <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-blue-500" />
+                  <span className="truncate text-[11px] font-bold text-slate-300">Facing neighbors</span>
+                </div>
+                <span className="text-[11px] font-black text-white">{Number(handoverRelationCounts.facing || 0)}</span>
+              </div>
+              <div className="flex items-center justify-between gap-2 rounded-lg border border-slate-800 bg-slate-900/80 px-2.5 py-1">
+                <div className="flex min-w-0 items-center gap-1.5">
+                  <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-violet-500" />
+                  <span className="truncate text-[11px] font-bold text-slate-300">Same cluster</span>
+                </div>
+                <span className="text-[11px] font-black text-white">{Number(handoverRelationCounts.sameCluster || 0)}</span>
+              </div>
+              <div className="flex items-center justify-between gap-2 rounded-lg border border-slate-800 bg-slate-900/80 px-2.5 py-1">
+                <div className="flex min-w-0 items-center gap-1.5">
+                  <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-emerald-500" />
+                  <span className="truncate text-[11px] font-bold text-slate-300">Nearby</span>
+                </div>
+                <span className="text-[11px] font-black text-white">{Number(handoverRelationCounts.nearby || 0)}</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showIssueMarkers && (
+          <div className="rounded-xl border border-indigo-500/20 bg-indigo-950/30 p-2.5">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <div className="flex min-w-0 items-center gap-1.5 text-xs font-black uppercase tracking-wider text-indigo-400">
+                <Sparkles className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate">Issue Hotspots</span>
+              </div>
+              <span className="rounded-full bg-indigo-600/30 px-2 py-0.5 text-xs font-black text-indigo-200 border border-indigo-500/40">
+                {Number(issueMarkerCounts.total || 0)}
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-1.5">
+              {[
+                ["PCI Collision", "PCI_COLLISION", "#EF4444"],
+                ["PCI Confusion", "PCI_CONFUSION", "#F97316"],
+                ["Overshooting", "OVERSHOOTING", "#A855F7"],
+                ["Handover", "HANDOVER", "#06B6D4"],
+              ].map(([label, key, color]) => (
+                <div key={key} className="flex items-center justify-between gap-2 rounded-lg border border-slate-800 bg-slate-900/80 px-2.5 py-1">
+                  <div className="flex min-w-0 items-center gap-1.5">
+                    <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: color }} />
+                    <span className="truncate text-[11px] font-bold text-slate-300">{label}</span>
+                  </div>
+                  <span className="text-[11px] font-black text-white">{Number(issueMarkerCounts[key] || 0)}</span>
+                </div>
+              ))}
             </div>
           </div>
         )}

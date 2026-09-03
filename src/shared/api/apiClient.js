@@ -1,3 +1,4 @@
+// The Spring backend for this project runs on port 3001.
 const DEFAULT_BASE_URL = "http://localhost:3001";
 
 export const API_BASE_URL =
@@ -24,6 +25,7 @@ export async function apiFetch(
   { query, body, headers = {}, ...options } = {},
 ) {
   const isFormData = typeof FormData !== "undefined" && body instanceof FormData;
+  const method = String(options.method || "GET").toUpperCase();
   const finalHeaders = { ...headers };
   const token =
     typeof window !== "undefined" ? localStorage.getItem("authToken") : null;
@@ -36,22 +38,40 @@ export async function apiFetch(
     finalHeaders["Content-Type"] = "application/json";
   }
 
-  const response = await fetch(buildUrl(endpoint, query), {
-    ...options,
-    headers: finalHeaders,
-    body:
-      body === undefined
-        ? undefined
-        : isFormData || typeof body === "string"
-          ? body
-          : JSON.stringify(body),
-  });
+  const requestUrl = buildUrl(endpoint, query);
 
-  let payload = null;
-  try {
-    payload = await response.json();
-  } catch {
-    payload = null;
+  const performRequest = async (requestHeaders) =>
+    fetch(requestUrl, {
+      ...options,
+      headers: requestHeaders,
+      body:
+        body === undefined
+          ? undefined
+          : isFormData || typeof body === "string"
+            ? body
+            : JSON.stringify(body),
+    });
+
+  const parseResponse = async (response) => {
+    let payload = null;
+    try {
+      payload = await response.json();
+    } catch {
+      payload = null;
+    }
+    return { response, payload };
+  };
+
+  let { response, payload } = await parseResponse(
+    await performRequest(finalHeaders),
+  );
+
+  if (response.status === 401 && token && method === "GET") {
+    const retryHeaders = { ...headers };
+    delete retryHeaders.Authorization;
+    ({ response, payload } = await parseResponse(
+      await performRequest(retryHeaders),
+    ));
   }
 
   if (!response.ok) {

@@ -36,6 +36,18 @@ export default function MapFilterPanel({
   lbPredictionControlProps,
   showAlarms,
   onToggleAlarms,
+  showTechHandovers,
+  onToggleTechHandovers,
+  showBandHandovers,
+  onToggleBandHandovers,
+  showPciHandovers,
+  onTogglePciHandovers,
+  showPciIssues,
+  onTogglePciIssues,
+  showOvershooting,
+  onToggleOvershooting,
+  showMissingNeighbours,
+  onToggleMissingNeighbours,
 }) {
   return (
     <div className="space-y-4 border-b border-slate-800/80 bg-slate-950 p-4 text-slate-100">
@@ -224,6 +236,68 @@ export default function MapFilterPanel({
             activeColor="bg-red-500"
             Icon={AlertTriangle}
           />
+
+          <ToggleSwitch
+            enabled={showPciIssues}
+            onChange={onTogglePciIssues}
+            label={showPciIssues ? "PCI Issues ON" : "PCI Issues OFF"}
+            description="PCI collision and confusion markers"
+            activeColor="bg-red-500"
+            Icon={AlertTriangle}
+          />
+
+          <ToggleSwitch
+            enabled={showOvershooting}
+            onChange={onToggleOvershooting}
+            label={showOvershooting ? "Overshooting ON" : "Overshooting OFF"}
+            description="Overshooting risk markers"
+            activeColor="bg-purple-500"
+            Icon={Sparkles}
+          />
+
+          <ToggleSwitch
+            enabled={showMissingNeighbours}
+            onChange={onToggleMissingNeighbours}
+            label={showMissingNeighbours ? "Missing Neighbours ON" : "Missing Neighbours OFF"}
+            description="Missing neighbor markers"
+            activeColor="bg-emerald-500"
+            Icon={Layers}
+          />
+
+          <div className="mt-2 rounded-xl border border-slate-700/80 bg-slate-950/70 px-3 py-3">
+            <div className="mb-3 flex items-center gap-2 text-sm font-black text-white">
+              <span>Mobility</span>
+              <span className="rounded-full bg-blue-600 px-2 py-0.5 text-[10px] text-white">
+                {(showTechHandovers ? 1 : 0) + (showBandHandovers ? 1 : 0) + (showPciHandovers ? 1 : 0)}
+              </span>
+            </div>
+            <div className="space-y-3">
+              <ToggleSwitch
+                enabled={showTechHandovers}
+                onChange={onToggleTechHandovers}
+                label="Tech Handovers"
+                description="Technology change points"
+                activeColor="bg-violet-500"
+                Icon={Eye}
+              />
+              <ToggleSwitch
+                enabled={showBandHandovers}
+                onChange={onToggleBandHandovers}
+                label="Band Handovers"
+                description="Frequency band changes"
+                activeColor="bg-emerald-500"
+                Icon={Eye}
+              />
+              <ToggleSwitch
+                enabled={showPciHandovers}
+                onChange={onTogglePciHandovers}
+                label="PCI Handovers"
+                description="PCI changes and conflicts"
+                activeColor="bg-red-500"
+                Icon={Eye}
+              />
+            </div>
+          </div>
         </div>
       </div>
     </div>
