@@ -100,6 +100,15 @@ function StatCard({ label, value, icon: Icon, tone = "slate" }) {
   );
 }
 
+function EvidenceItem({ label, value }) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm">
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">{label}</p>
+      <p className="mt-1 text-sm font-semibold text-slate-800">{value}</p>
+    </div>
+  );
+}
+
 function StatusBadge({ value }) {
   const status = value || "GOOD";
   return (
@@ -528,7 +537,8 @@ export default function SitesPage() {
                         <tr>
                           <th className="px-4 py-3">Site</th>
                           <th className="px-4 py-3">Impact</th>
-                          <th className="px-4 py-3">PCI</th>
+                          <th className="px-4 py-3">PCI Collision</th>
+                          <th className="px-4 py-3">PCI Confusion</th>
                           <th className="px-4 py-3">HO</th>
                           <th className="px-4 py-3">TA</th>
                           <th className="px-4 py-3">Status</th>
@@ -542,7 +552,8 @@ export default function SitesPage() {
                               <div className="text-xs text-slate-500">{site.cluster || "Unclustered"} {site.latestObservedAt ? `• ${site.latestObservedAt}` : ""}</div>
                             </td>
                             <td className="px-4 py-3 font-semibold text-slate-900">{percent(site.impactScore)}</td>
-                            <td className="px-4 py-3 text-slate-600">{percent(Math.max(site.pciCollisionScore || 0, site.pciConfusionScore || 0))}</td>
+                            <td className="px-4 py-3 text-red-700">{percent(site.pciCollisionScore)}</td>
+                            <td className="px-4 py-3 text-orange-700">{percent(site.pciConfusionScore)}</td>
                             <td className="px-4 py-3 text-slate-600">{percent(site.handoverRisk)}</td>
                             <td className="px-4 py-3 text-slate-600">{percent(site.overshootingScore)}</td>
                             <td className="px-4 py-3"><StatusBadge value={site.status} /></td>
@@ -562,15 +573,25 @@ export default function SitesPage() {
                         <div className="flex flex-wrap items-center justify-between gap-3">
                           <div>
                             <h3 className="text-base font-semibold text-slate-900">{selectedIntelligence.site}</h3>
-                            <p className="text-xs text-slate-500">Latest observed {selectedIntelligence.latestObservedAt || "-"}</p>
+                        <p className="text-xs text-slate-500">
+                          Latest observed {selectedIntelligence.latestObservedAt || "-"}
+                          {selectedIntelligence.generatedAt ? ` - Analyzed ${selectedIntelligence.generatedAt}` : ""}
+                        </p>
                           </div>
                           <StatusBadge value={selectedIntelligence.status} />
                         </div>
-                        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
                           <StatCard label="Impact" value={percent(selectedIntelligence.impactScore)} icon={AlertTriangle} tone="red" />
-                          <StatCard label="PCI Risk" value={percent(Math.max(selectedIntelligence.pciCollisionScore || 0, selectedIntelligence.pciConfusionScore || 0))} icon={Radio} tone="orange" />
+                          <StatCard label="PCI Collision" value={percent(selectedIntelligence.pciCollisionScore)} icon={Radio} tone="red" />
+                          <StatCard label="PCI Confusion" value={percent(selectedIntelligence.pciConfusionScore)} icon={Radio} tone="orange" />
                           <StatCard label="Handover Risk" value={percent(selectedIntelligence.handoverRisk)} icon={Activity} tone="amber" />
                           <StatCard label="Overshooting" value={percent(selectedIntelligence.overshootingScore)} icon={Signal} tone="blue" />
+                        </div>
+                        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                          <EvidenceItem label="Calculation mode" value={selectedIntelligence.analysisMode || "-"} />
+                          <EvidenceItem label="KPI enrichment" value={selectedIntelligence.dataQuality?.kpiAvailable ? "Available" : "Site topology only"} />
+                          <EvidenceItem label="Coordinates" value={selectedIntelligence.dataQuality?.coordinatesAvailable ? "Valid" : "Missing"} />
+                          <EvidenceItem label="HO / TA signals" value={`${selectedIntelligence.dataQuality?.handoverMetricsAvailable ? "HO" : "No HO"} / ${selectedIntelligence.dataQuality?.timingAdvanceAvailable ? "TA" : "No TA"}`} />
                         </div>
                         <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
                           <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">Recommendations</div>

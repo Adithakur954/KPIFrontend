@@ -11,6 +11,7 @@ export default function FileUploadCard({
   const [selectedFile, setSelectedFile] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState(null);
+  const [uploadResult, setUploadResult] = useState(null);
   const fileInputRef = useRef(null);
 
   const handleDrag = (e) => {
@@ -65,6 +66,7 @@ export default function FileUploadCard({
     console.log("✅ [FileUploadCard] File validation passed");
     setSelectedFile(file);
     setUploadStatus(null);
+    setUploadResult(null);
   };
 
   const handleFileInputChange = (e) => {
@@ -105,6 +107,11 @@ export default function FileUploadCard({
         console.log("✅ [FileUploadCard] onUpload completed successfully");
         console.log("📊 [FileUploadCard] Upload result:", result);
         
+        if (result?.success === false) {
+          throw new Error(result.message || "Upload validation failed.");
+        }
+
+        setUploadResult(result);
         setUploadStatus("success");
         
         // Clear file after successful upload
@@ -112,6 +119,7 @@ export default function FileUploadCard({
           console.log("🧹 [FileUploadCard] Clearing file after success");
           setSelectedFile(null);
           setUploadStatus(null);
+          setUploadResult(null);
         }, 3000);
       } else {
         console.error("❌ [FileUploadCard] No onUpload function provided");
@@ -133,6 +141,7 @@ export default function FileUploadCard({
     console.log("🗑️ [FileUploadCard] Removing file");
     setSelectedFile(null);
     setUploadStatus(null);
+    setUploadResult(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
@@ -260,6 +269,11 @@ export default function FileUploadCard({
           <div>
             <p className="font-semibold text-green-800">Upload Successful!</p>
             <p className="text-sm text-green-700">Your file has been uploaded successfully.</p>
+            {uploadResult?.data && (
+              <p className="mt-1 text-xs text-green-700">
+                Inserted: {uploadResult.data.insertedRows ?? 0} | Invalid: {uploadResult.data.invalidRows ?? 0} | Duplicates: {uploadResult.data.duplicateRows ?? 0} | Skipped: {uploadResult.data.skippedRows ?? 0}
+              </p>
+            )}
           </div>
         </div>
       )}

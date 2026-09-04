@@ -42,8 +42,10 @@ export default function MapFilterPanel({
   onToggleBandHandovers,
   showPciHandovers,
   onTogglePciHandovers,
-  showPciIssues,
-  onTogglePciIssues,
+  showPciCollision,
+  onTogglePciCollision,
+  showPciConfusion,
+  onTogglePciConfusion,
   showOvershooting,
   onToggleOvershooting,
   showMissingNeighbours,
@@ -238,11 +240,20 @@ export default function MapFilterPanel({
           />
 
           <ToggleSwitch
-            enabled={showPciIssues}
-            onChange={onTogglePciIssues}
-            label={showPciIssues ? "PCI Issues ON" : "PCI Issues OFF"}
-            description="PCI collision and confusion markers"
+            enabled={showPciCollision}
+            onChange={onTogglePciCollision}
+            label={showPciCollision ? "PCI Collision ON" : "PCI Collision OFF"}
+            description="Same PCI in nearby cells"
             activeColor="bg-red-500"
+            Icon={AlertTriangle}
+          />
+
+          <ToggleSwitch
+            enabled={showPciConfusion}
+            onChange={onTogglePciConfusion}
+            label={showPciConfusion ? "PCI Confusion ON" : "PCI Confusion OFF"}
+            description="PCI reuse and overlap risk"
+            activeColor="bg-orange-500"
             Icon={AlertTriangle}
           />
 

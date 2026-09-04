@@ -40,6 +40,7 @@ import { fetchThresholdRules } from "@/features/threshold_rules/services/thresho
 import UserContext from "@/shared/context/FileSelectionContext";
 import { useAuth } from "@/shared/context/AuthContext";
 import { fetchCompanies } from "@/shared/api/companyService";
+import { fetchBackendHealth } from "@/shared/api/healthService";
 
 const THRESHOLD_STORAGE_PREFIX = "dashboardThresholdProfile";
 const THRESHOLD_OPERATOR_STORAGE_PREFIX = "dashboardThresholdOperators";
@@ -105,12 +106,27 @@ export default function DashboardPage() {
   const [isDashboardScopeReady, setIsDashboardScopeReady] = useState(false);
   const [thresholdTransferMessage, setThresholdTransferMessage] =
     useState(null);
+  const [backendHealth, setBackendHealth] = useState(null);
   const selectedDashboardFileId = String(selectedFileId || "");
   const setSelectedDashboardFileId = setSelectedFileId;
   const isSuperAdmin = String(user?.role || "").toUpperCase() === "SUPER_ADMIN";
   const effectiveCompanyId = isSuperAdmin
     ? selectedCompanyId || undefined
     : user?.companyId || undefined;
+
+  useEffect(() => {
+    let active = true;
+    fetchBackendHealth()
+      .then((response) => {
+        if (active) setBackendHealth(response?.data || null);
+      })
+      .catch(() => {
+        if (active) setBackendHealth({ status: "DOWN" });
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const isInitialMount = useRef(true);
   const hasHydratedSelectionRef = useRef(false);
@@ -966,6 +982,17 @@ export default function DashboardPage() {
             </div>
 
             <div className="flex items-center gap-4">
+              <div
+                title={backendHealth?.timestamp ? `Last response: ${backendHealth.timestamp}` : "Backend health check"}
+                className={`hidden items-center gap-2 rounded-full border px-3 py-2 text-xs font-bold lg:flex ${
+                  backendHealth?.status === "UP"
+                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                    : "border-red-200 bg-red-50 text-red-700"
+                }`}
+              >
+                <span className={`h-2 w-2 rounded-full ${backendHealth?.status === "UP" ? "bg-emerald-500" : "bg-red-500"}`} />
+                Backend {backendHealth?.status === "UP" ? "Online" : "Unavailable"}
+              </div>
               {isSuperAdmin && (
                 <div className="flex flex-col">
                   <label className="text-xs font-semibold text-slate-500 mb-1">

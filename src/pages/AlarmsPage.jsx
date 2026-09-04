@@ -505,6 +505,10 @@ export default function AlarmsPage() {
           <SummaryCard label="Resolved" value={statusCounts.RESOLVED} tone="green" />
         </div>
 
+        {summary?.generatedAt && (
+          <p className="text-right text-xs text-slate-500">Alarm summary refreshed: {formatDate(summary.generatedAt)}</p>
+        )}
+
         <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="flex flex-col gap-3 border-b border-slate-100 p-5 md:flex-row md:items-center md:justify-between">
             <div>

@@ -1214,7 +1214,8 @@ export default function MapPage() {
   const [showTechHandovers, setShowTechHandovers] = useState(false);
   const [showBandHandovers, setShowBandHandovers] = useState(false);
   const [showPciHandovers, setShowPciHandovers] = useState(false);
-  const [showPciIssues, setShowPciIssues] = useState(false);
+  const [showPciCollision, setShowPciCollision] = useState(false);
+  const [showPciConfusion, setShowPciConfusion] = useState(false);
   const [showOvershooting, setShowOvershooting] = useState(false);
   const [showMissingNeighbours, setShowMissingNeighbours] = useState(false);
   const [siteMarkerScale, setSiteMarkerScale] = useState(1);
@@ -2091,15 +2092,13 @@ export default function MapPage() {
 
   const visibleSiteIntelligenceMapItems = useMemo(() => {
     const enabledIssues = new Set();
-    if (showPciIssues) {
-      enabledIssues.add("PCI_COLLISION");
-      enabledIssues.add("PCI_CONFUSION");
-    }
+    if (showPciCollision) enabledIssues.add("PCI_COLLISION");
+    if (showPciConfusion) enabledIssues.add("PCI_CONFUSION");
     if (showOvershooting) enabledIssues.add("OVERSHOOTING");
     if (showMissingNeighbours) enabledIssues.add("MISSING_NEIGHBOR");
 
     return siteIntelligenceMapItems.filter((item) => enabledIssues.has(item.__issueKey));
-  }, [handoverOverlayEnabled, showMissingNeighbours, showOvershooting, showPciIssues, siteIntelligenceMapItems]);
+  }, [handoverOverlayEnabled, showMissingNeighbours, showOvershooting, showPciCollision, showPciConfusion, siteIntelligenceMapItems]);
 
   const visibleIntelligenceIssueCounts = useMemo(() => {
     return visibleSiteIntelligenceMapItems.reduce(
@@ -4255,7 +4254,19 @@ export default function MapPage() {
   }, [selectedSite, loadSelectedSiteDetails]);
 
   useEffect(() => {
-    if (!map || !window.google || !useDeckRendering) return;
+    if (!map || !window.google) return;
+
+    // Detach the deck overlay when native Google Maps rendering is active.
+    // Otherwise a previously-created deck layer can keep drawing stale
+    // handover lines after their toggles are switched off.
+    if (!useDeckRendering) {
+      if (deckOverlayRef.current) {
+        deckOverlayRef.current.setProps({ layers: [] });
+        deckOverlayRef.current.setMap(null);
+        deckOverlayRef.current = null;
+      }
+      return;
+    }
 
     if (!deckOverlayRef.current) {
       deckOverlayRef.current = new GoogleMapsOverlay({ layers: [] });
@@ -4845,6 +4856,9 @@ export default function MapPage() {
     handoverPolylinesRef.current.clear();
     predictionLinesRef.current.forEach((line) => line.setMap(null));
     predictionLinesRef.current.clear();
+    if (deckOverlayRef.current) {
+      deckOverlayRef.current.setProps({ layers: [] });
+    }
   }, [handoverOverlayEnabled, showPredictions]);
 
   // Render cells
@@ -5464,8 +5478,10 @@ export default function MapPage() {
                 onToggleBandHandovers={() => setShowBandHandovers((value) => !value)}
                 showPciHandovers={showPciHandovers}
                 onTogglePciHandovers={() => setShowPciHandovers((value) => !value)}
-                showPciIssues={showPciIssues}
-                onTogglePciIssues={() => setShowPciIssues((value) => !value)}
+                showPciCollision={showPciCollision}
+                onTogglePciCollision={() => setShowPciCollision((value) => !value)}
+                showPciConfusion={showPciConfusion}
+                onTogglePciConfusion={() => setShowPciConfusion((value) => !value)}
                 showOvershooting={showOvershooting}
                 onToggleOvershooting={() => setShowOvershooting((value) => !value)}
                 showMissingNeighbours={showMissingNeighbours}
