@@ -1476,7 +1476,7 @@ export default function MapPage() {
   }, [selectedFileId]);
 
   useEffect(() => {
-    if (!selectedFileId) {
+    if (!selectedFileId && !selectedSiteFileId) {
       setSiteIntelligence(null);
       return;
     }
@@ -4312,7 +4312,7 @@ export default function MapPage() {
     */
 
     const handoverLineLayer =
-      visibleHandoverRelationItems.length > 0
+      handoverOverlayEnabled && visibleHandoverRelationItems.length > 0
         ? new LineLayer({
             id: "deck-handover-relations",
             data: visibleHandoverRelationItems,
@@ -4356,7 +4356,7 @@ export default function MapPage() {
         : null;
 
     const handoverLabelLayer =
-      visibleHandoverRelationItems.length > 0
+      handoverOverlayEnabled && visibleHandoverRelationItems.length > 0
         ? new TextLayer({
             id: "deck-handover-labels",
             data: zoomLevel >= 10 ? visibleHandoverRelationItems : [],
@@ -4782,7 +4782,7 @@ export default function MapPage() {
     handoverPolylinesRef.current.forEach((polyline) => polyline.setMap(null));
     handoverPolylinesRef.current.clear();
 
-    if (!map || !window.google || visibleHandoverRelationItems.length === 0) return;
+    if (!map || !window.google || !handoverOverlayEnabled || visibleHandoverRelationItems.length === 0) return;
 
     visibleHandoverRelationItems.forEach((item, index) => {
       const polyline = new window.google.maps.Polyline({
@@ -4832,9 +4832,20 @@ export default function MapPage() {
         }
       });
 
-      handoverPolylinesRef.current.set(`${item.targetSite?.SITEID || index}`, polyline);
+      const sourceKey = item.sourceSite?.SITEID || item.sourceSite?.siteId || item.sourceSite?.siteName || "source";
+      const targetKey = item.targetSite?.SITEID || item.targetSite?.siteId || item.targetSite?.siteName || "target";
+      handoverPolylinesRef.current.set(`${sourceKey}::${targetKey}::${index}`, polyline);
     });
-  }, [map, activeMapPanel, visibleHandoverRelationItems, handleSiteMarkerClick]);
+  }, [map, activeMapPanel, handoverOverlayEnabled, visibleHandoverRelationItems, handleSiteMarkerClick]);
+
+  // Relation lines must not survive after every related layer is switched off.
+  useEffect(() => {
+    if (handoverOverlayEnabled || showPredictions) return;
+    handoverPolylinesRef.current.forEach((polyline) => polyline.setMap(null));
+    handoverPolylinesRef.current.clear();
+    predictionLinesRef.current.forEach((line) => line.setMap(null));
+    predictionLinesRef.current.clear();
+  }, [handoverOverlayEnabled, showPredictions]);
 
   // Render cells
   useEffect(() => {

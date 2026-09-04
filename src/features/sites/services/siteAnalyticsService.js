@@ -53,7 +53,7 @@ export async function fetchSiteIntelligence(fileId, siteFileId, limit = 20) {
     return await apiFetch("sites/intelligence", {
       method: "GET",
       query: {
-        fileId,
+        fileId: fileId || undefined,
         siteFileId: siteFileId || undefined,
         limit,
       },
