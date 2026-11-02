@@ -6169,6 +6169,9 @@ export default function MapPage() {
               )}
             </div>
 
+            </>
+            )}
+
             {activeMapPanel === "clusters" && (
               <div className="space-y-3">
                 <div className="rounded-2xl border border-slate-800/80 bg-slate-900/70 p-4 shadow-lg">
@@ -6590,6 +6593,8 @@ export default function MapPage() {
               </div>
             )}
 
+            {activeMapPanel === "overview" && (
+            <>
             <div className="grid grid-cols-2 gap-3">
               <div className="rounded-2xl border border-slate-800/80 bg-slate-900/60 p-3.5 shadow-md">
                 <h3 className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-300">
