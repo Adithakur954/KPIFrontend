@@ -162,6 +162,7 @@ export default function RecommendationResultsPanel({
   const [shortNameQuery, setShortNameQuery] = useState("");
   const [heatTooltip, setHeatTooltip] = useState(null);
   const [showHeatScores, setShowHeatScores] = useState(false);
+  const [showRecommendations, setShowRecommendations] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
   const visualizationRef = useRef(null);
   const isPrePostMode = result?.period_mode === "pre_post";
@@ -785,6 +786,17 @@ export default function RecommendationResultsPanel({
       <div className="flex items-center justify-between gap-3">
         <h3 className="text-lg font-semibold text-zinc-900">Result Summary</h3>
         <div className="flex flex-wrap items-center gap-2">
+          {resultView === "table" ? (
+            <label className="inline-flex cursor-pointer items-center gap-2 px-2 py-1.5 text-sm text-zinc-700">
+              <input
+                type="checkbox"
+                checked={showRecommendations}
+                onChange={(event) => setShowRecommendations(event.target.checked)}
+                className="h-4 w-4 accent-zinc-900"
+              />
+              Show recommendations
+            </label>
+          ) : null}
           {resultView === "visualization" ? (
             <button
               type="button"
@@ -890,8 +902,8 @@ export default function RecommendationResultsPanel({
                 <th className="px-3 py-2">Date</th>
                 <th className="px-3 py-2">Severity</th>
                 <th className="px-3 py-2">Score</th>
-                <th className="px-3 py-2">Primary Cause</th>
-                <th className="px-3 py-2">Recommendation</th>
+                <th className="px-3 py-2">Cause and additional patterns</th>
+                {showRecommendations ? <th className="px-3 py-2">Recommendation and implementation</th> : null}
               </tr>
             </thead>
             <tbody>
@@ -911,11 +923,31 @@ export default function RecommendationResultsPanel({
                   </td>
                   <td className="px-3 py-2">{row.Severity}</td>
                   <td className="px-3 py-2">{row["Anomaly Score"]}</td>
-                  <td className="px-3 py-2">{row["Primary Cause"]}</td>
-                  <td className="px-3 py-2">
+                  <td className="min-w-80 max-w-xl px-3 py-2">
+                    <div className="font-semibold">{row["Primary Cause"]}</div>
+                    {row["Secondary Causes"] ? (
+                      <p className="mt-2 text-xs leading-relaxed text-zinc-700"><strong>Additional patterns: </strong>{row["Secondary Causes"]}</p>
+                    ) : null}
+                  </td>
+                  {showRecommendations ? <td className="min-w-96 max-w-2xl px-3 py-2">
+                    <p className="whitespace-pre-line break-words leading-relaxed">
                     {row["Vendor Recommendation"] ||
                       row["Nokia Recommendation"]}
-                  </td>
+                    </p>
+                    <ol className="mt-3 list-decimal space-y-3 pl-5 text-xs leading-relaxed">
+                      {splitTopNumberedItems(String(row["Recommended Parameters"] || "").replace(/\\n/g, "\n"), Infinity).map((parameter, index) => {
+                        const values = splitTopNumberedItems(String(row["Recommended Values"] || "").replace(/\\n/g, "\n"), Infinity);
+                        const notes = splitTopNumberedItems(String(row["Implementation Notes"] || "").replace(/\\n/g, "\n"), Infinity);
+                        return (
+                          <li key={`${parameter}-${index}`}>
+                            <div className="font-semibold">{parameter}</div>
+                            {values[index] ? <p><strong>Suggested action/value: </strong>{values[index]}</p> : null}
+                            {notes[index] ? <p className="text-zinc-600"><strong>Validation: </strong>{notes[index]}</p> : null}
+                          </li>
+                        );
+                      })}
+                    </ol>
+                  </td> : null}
                 </tr>
               ))}
             </tbody>
