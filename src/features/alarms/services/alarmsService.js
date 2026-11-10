@@ -72,21 +72,24 @@ export async function generateKpiAlarms(fileId) {
   }
 }
 
-export async function fetchKpiAlarmSummary(fileId) {
+export async function fetchKpiAlarmSummary(fileId, { signal } = {}) {
   try {
     return await apiFetch(`${ENDPOINTS.KPI_ALARMS}/summary`, {
       method: "GET",
+      signal,
       query: { fileId },
     });
   } catch (error) {
+    if (error?.name === "AbortError") throw error;
     return { success: false, message: error.message || "Failed to fetch alarm summary", data: null };
   }
 }
 
-export async function fetchKpiAlarms(params = {}) {
+export async function fetchKpiAlarms(params = {}, { signal } = {}) {
   try {
     return await apiFetch(ENDPOINTS.KPI_ALARMS, {
       method: "GET",
+      signal,
       query: {
         fileId: params.fileId,
         severity: params.severity,
@@ -96,6 +99,7 @@ export async function fetchKpiAlarms(params = {}) {
       },
     });
   } catch (error) {
+    if (error?.name === "AbortError") throw error;
     return { success: false, message: error.message || "Failed to fetch KPI alarms", data: { items: [], total: 0 } };
   }
 }

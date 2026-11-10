@@ -20,24 +20,25 @@ export default function MapHeader({
   onResetCellRadius,
   onDownloadPdf,
   exportingPdf = false,
+  mapReady = true,
 }) {
   const [utilityOpen, setUtilityOpen] = useState(false);
   const siteSizePercent = Math.round(siteMarkerScale * 100);
   const cellRadiusPercent = Math.round(cellRadiusScale * 100);
 
   return (
-    <div className="z-30 flex h-16 min-h-16 items-center justify-between border-b border-slate-800/80 bg-slate-950/95 px-5 text-white shadow-xl backdrop-blur-xl">
-      <div className="flex items-center gap-3">
+    <div className="relative z-30 flex flex-wrap items-center justify-between gap-2 border-b border-slate-800/80 bg-slate-950/95 py-3 pl-16 pr-3 text-white shadow-xl backdrop-blur-xl lg:min-h-16 lg:px-5">
+      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3">
         <button
           type="button"
           onClick={onToggleSidebar}
-          className="flex items-center justify-center rounded-xl border border-slate-800 bg-slate-900/90 p-2.5 text-slate-300 shadow-sm transition-all hover:border-slate-700 hover:bg-slate-800 hover:text-white"
+          className="hidden items-center justify-center rounded-xl border border-slate-800 bg-slate-900/90 p-2.5 text-slate-300 shadow-sm transition-all hover:border-slate-700 hover:bg-slate-800 hover:text-white lg:flex"
           title={sidebarOpen ? "Hide panel" : "Show panel"}
         >
           {sidebarOpen ? <X className="h-4.5 w-4.5" /> : <Filter className="h-4.5 w-4.5" />}
         </button>
 
-        <div className="flex items-center gap-3 border-r border-slate-800/80 pr-4">
+        <div className="hidden items-center gap-3 border-r border-slate-800/80 pr-4 xl:flex">
           <div className="relative flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 shadow-md shadow-blue-500/20">
             <Radio className="h-5 w-5 text-white" />
             <span className="absolute -right-0.5 -top-0.5 flex h-3 w-3">
@@ -48,13 +49,13 @@ export default function MapHeader({
           <div>
             <div className="flex items-center gap-2">
               <span className="text-base font-black tracking-tight text-white">Coverage Map</span>
-              <span className="rounded-full border border-blue-500/30 bg-blue-500/10 px-2 py-0.5 text-[10px] font-bold text-blue-400">LIVE</span>
+              <span className="rounded-full border border-blue-500/30 bg-blue-500/10 px-2 py-0.5 text-[10px] font-bold text-blue-400">{mapReady ? "READY" : "LOADING"}</span>
             </div>
             <div className="text-[11px] font-medium text-slate-400">Network Telemetry & Analytics</div>
           </div>
         </div>
 
-        <div className="ml-1 flex items-center gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={onOpenFilter}
@@ -81,15 +82,8 @@ export default function MapHeader({
           </button>
           <button
             type="button"
-            className="hidden items-center gap-2 rounded-xl border border-slate-800 bg-slate-900/80 px-3.5 py-2 text-xs font-bold text-slate-300 transition-all hover:border-slate-700 hover:bg-slate-800 hover:text-white md:flex"
-          >
-            <Layers className="h-4 w-4 text-purple-400" />
-            <span>Multi Map</span>
-          </button>
-          <button
-            type="button"
             onClick={onDownloadPdf}
-            disabled={exportingPdf}
+            disabled={exportingPdf || !mapReady}
             className="flex items-center gap-2 rounded-xl border border-emerald-500/40 bg-gradient-to-r from-emerald-600 to-teal-600 px-3.5 py-2 text-xs font-bold text-white shadow-md shadow-emerald-900/30 transition-all hover:from-emerald-500 hover:to-teal-500 disabled:cursor-not-allowed disabled:opacity-60"
             title="Download current map report as PDF"
           >
@@ -97,10 +91,11 @@ export default function MapHeader({
             <span>{exportingPdf ? "Generating..." : "Download PDF"}</span>
           </button>
 
-          <div className="relative">
+          <div className="static sm:relative">
             <button
               type="button"
               onClick={() => setUtilityOpen((open) => !open)}
+              aria-expanded={utilityOpen}
               className={`flex items-center gap-2 rounded-xl border px-3.5 py-2 text-xs font-bold transition-all shadow-sm ${
                 utilityOpen
                   ? "border-blue-500/60 bg-blue-600/90 text-white"
@@ -113,10 +108,10 @@ export default function MapHeader({
             </button>
 
             {utilityOpen && (
-              <div className="absolute left-0 top-full z-50 mt-2.5 w-84 rounded-2xl border border-slate-800 bg-slate-950/95 p-4 text-white shadow-2xl backdrop-blur-xl ring-1 ring-white/10">
+              <div className="absolute left-3 right-3 top-full z-50 mt-2.5 w-auto rounded-2xl border border-slate-800 bg-slate-950/95 p-4 text-white shadow-2xl backdrop-blur-xl ring-1 ring-white/10 sm:left-auto sm:right-0 sm:w-72">
                 <SizeControl
                   title="Site Size"
-                  description="Increase or reduce sector triangle scale"
+                  description="Increase or reduce site marker size"
                   percent={siteSizePercent}
                   value={siteMarkerScale}
                   onDecrease={onDecreaseSiteSize}
@@ -128,7 +123,7 @@ export default function MapHeader({
                 <div className="my-3.5 border-t border-slate-800/80" />
                 <SizeControl
                   title="Cell Radius"
-                  description="Increase or reduce coverage circle scale"
+                  description="Increase or reduce cell sector coverage"
                   percent={cellRadiusPercent}
                   value={cellRadiusScale}
                   onDecrease={onDecreaseCellRadius}
@@ -143,7 +138,7 @@ export default function MapHeader({
         </div>
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="hidden items-center gap-3 xl:flex">
         <div className="flex items-center gap-2.5 rounded-xl border border-slate-800 bg-slate-900/80 px-3 py-1.5 shadow-sm">
           <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-600 text-xs font-black text-white shadow-sm">
             A
@@ -195,6 +190,7 @@ function SizeControl({
         </button>
       </div>
       <input
+        aria-label={title}
         type="range"
         min="0.05"
         max="8"

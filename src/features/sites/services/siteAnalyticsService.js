@@ -1,12 +1,14 @@
 import { apiFetch } from "@/shared/api/apiClient";
 
-export async function fetchSiteSummary(fileId) {
+export async function fetchSiteSummary(fileId, { signal } = {}) {
   try {
     return await apiFetch("sites/summary", {
       method: "GET",
+      signal,
       query: { fileId },
     });
   } catch (error) {
+    if (error?.name === "AbortError") throw error;
     console.error("[siteAnalyticsService] fetchSiteSummary failed", error);
     return {
       success: false,
@@ -32,13 +34,15 @@ export async function fetchWorstSites(fileId, limit = 10) {
   }
 }
 
-export async function fetchSiteDetails(fileId, site) {
+export async function fetchSiteDetails(fileId, site, { signal } = {}) {
   try {
     return await apiFetch("sites/details", {
       method: "GET",
+      signal,
       query: { fileId, site },
     });
   } catch (error) {
+    if (error?.name === "AbortError") throw error;
     console.error("[siteAnalyticsService] fetchSiteDetails failed", error);
     return {
       success: false,
@@ -48,10 +52,11 @@ export async function fetchSiteDetails(fileId, site) {
   }
 }
 
-export async function fetchSiteIntelligence(fileId, siteFileId, limit = 20) {
+export async function fetchSiteIntelligence(fileId, siteFileId, limit = 20, { signal } = {}) {
   try {
     return await apiFetch("sites/intelligence", {
       method: "GET",
+      signal,
       query: {
         fileId: fileId || undefined,
         siteFileId: siteFileId || undefined,
@@ -59,6 +64,7 @@ export async function fetchSiteIntelligence(fileId, siteFileId, limit = 20) {
       },
     });
   } catch (error) {
+    if (error?.name === "AbortError") throw error;
     console.error("[siteAnalyticsService] fetchSiteIntelligence failed", error);
     return {
       success: false,
@@ -84,13 +90,15 @@ export async function fetchSitePredictionSummary(fileId) {
   }
 }
 
-export async function fetchSitePredictionRecommendations({ fileId, site, limit = 50 }) {
+export async function fetchSitePredictionRecommendations({ fileId, site, limit = 50, signal }) {
   try {
     return await apiFetch("site-prediction/recommendations", {
       method: "GET",
+      signal,
       query: { fileId, site, limit },
     });
   } catch (error) {
+    if (error?.name === "AbortError") throw error;
     console.error("[siteAnalyticsService] fetchSitePredictionRecommendations failed", error);
     return {
       success: false,
@@ -100,7 +108,7 @@ export async function fetchSitePredictionRecommendations({ fileId, site, limit =
   }
 }
 
-export async function runLbWcfPrediction({ fileId, taFile, method = "both", quantile = 0.1, mlMode = 3 }) {
+export async function runLbWcfPrediction({ fileId, taFile, method = "both", quantile = 0.1, mlMode = 3, signal }) {
   try {
     const body = new FormData();
     body.append("method", method);
@@ -112,10 +120,12 @@ export async function runLbWcfPrediction({ fileId, taFile, method = "both", quan
 
     return await apiFetch("site-prediction/lb-wcf", {
       method: "POST",
+      signal,
       query: { fileId },
       body,
     });
   } catch (error) {
+    if (error?.name === "AbortError") throw error;
     console.error("[siteAnalyticsService] runLbWcfPrediction failed", error);
     return {
       success: false,

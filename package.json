@@ -12,6 +12,8 @@
     "build": "vite build",
     "desktop:build": "npm run build && electron-builder",
     "lint": "eslint .",
+    "test:reports": "node --test src/features/reports/report.test.mjs",
+    "test:frontend": "node --test src/features/reports/report.test.mjs src/shared/api/asyncWait.test.mjs src/shared/api/analyticsCache.test.mjs src/features/map/utils/mapData.test.mjs src/features/kpi/utils/chartData.test.mjs src/features/worst_cell/workers/worstCell.test.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

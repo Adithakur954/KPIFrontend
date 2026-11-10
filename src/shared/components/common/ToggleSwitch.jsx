@@ -33,6 +33,9 @@ const ToggleSwitch = ({
 
       <button
         type="button"
+        role="switch"
+        aria-checked={enabled}
+        aria-label={label}
         onClick={onChange}
         className={`relative h-7 w-14 rounded-full transition-all duration-300 ${
           enabled ? activeColor : "bg-slate-600"

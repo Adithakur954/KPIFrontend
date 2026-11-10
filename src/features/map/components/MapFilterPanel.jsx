@@ -5,6 +5,11 @@ import MapKpiSelector from "./MapKpiSelector";
 
 export default function MapFilterPanel({
   fetchError,
+  dataLoading = false,
+  mapPreparing = false,
+  mapPreparationError = "",
+  onReloadMap,
+  onRetryData,
   totalSiteRows,
   missingCoordinateRows,
   mapDataCount,
@@ -53,12 +58,16 @@ export default function MapFilterPanel({
 }) {
   return (
     <div className="space-y-4 border-b border-slate-800/80 bg-slate-950 p-4 text-slate-100">
-      {(fetchError || mapDataCount === 0) && (
+      {dataLoading && <p role="status" className="text-sm text-blue-300">Loading all site-data pages...</p>}
+      {!dataLoading && mapPreparing && !mapPreparationError && <p role="status" className="text-sm text-blue-300">Site data fetched. Preparing map and site layers...</p>}
+      {mapPreparationError && <div role="alert" className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-200"><p>{mapPreparationError}</p><button type="button" onClick={onReloadMap} className="mt-2 rounded border px-3 py-1.5">Reload map</button></div>}
+      {!dataLoading && (fetchError || mapDataCount === 0) && (
         <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-3.5 shadow-md backdrop-blur-md">
           <div className="flex items-center gap-2 text-sm font-bold text-amber-200">
             <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400" />
             <span>Site data map status</span>
           </div>
+          {fetchError && onRetryData && <button type="button" onClick={onRetryData} className="mt-3 rounded-lg border border-amber-400/50 px-3 py-1.5 text-xs text-amber-100">Retry site data</button>}
           <div className="mt-1.5 text-xs leading-5 text-amber-300/90">
             {fetchError ||
               (totalSiteRows > 0
@@ -77,10 +86,11 @@ export default function MapFilterPanel({
 
         <div className="space-y-3.5">
           <div>
-            <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-400">
+            <label htmlFor="map-site-upload" className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-400">
               Site Upload File
             </label>
             <select
+              id="map-site-upload"
               value={selectedSiteFileId}
               onChange={(event) => onSiteFileChange(event.target.value)}
               className="w-full rounded-xl border border-slate-700/80 bg-slate-900/90 px-3.5 py-2.5 text-sm font-semibold text-white outline-none transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
@@ -100,6 +110,7 @@ export default function MapFilterPanel({
           </div>
 
           <MapKpiSelector
+            showMetric
             uploads={uploads}
             selectedFileId={selectedFileId}
             onKpiFileChange={onKpiFileChange}

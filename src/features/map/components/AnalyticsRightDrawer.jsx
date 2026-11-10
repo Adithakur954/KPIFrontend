@@ -12,9 +12,10 @@ export default function AnalyticsRightDrawer({
   headerChildren,
   children,
 }) {
+  if (!open) return null;
   return (
     <div
-      className={`absolute inset-y-0 right-0 z-30 flex w-[460px] max-w-[94vw] flex-col border-l border-slate-800/80 bg-slate-950/95 text-slate-100 shadow-2xl backdrop-blur-xl transition-transform duration-300 ease-in-out ${
+      className={`absolute inset-y-0 right-0 z-30 flex w-[460px] max-w-full flex-col border-l border-slate-800/80 bg-slate-950/95 text-slate-100 shadow-2xl backdrop-blur-xl transition-transform duration-300 ease-in-out ${
         open ? "translate-x-0" : "translate-x-full pointer-events-none"
       }`}
     >

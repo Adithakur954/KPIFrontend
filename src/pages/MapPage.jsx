@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useState, useMemo, useRef } from "react";
 import { GoogleMap, useJsApiLoader } from "@react-google-maps/api";
-import { GoogleMapsOverlay } from "@deck.gl/google-maps";
-import { LineLayer, PolygonLayer, ScatterplotLayer, TextLayer } from "@deck.gl/layers";
+import { EMPTY_MAP_ROWS, validCoordinates, createNearbySiteIndex } from "@/features/map/utils/mapData";
 import { getMapDetails } from "@/features/map/services/mapService";
 import AnalyticsRightDrawer from "@/features/map/components/AnalyticsRightDrawer";
 import MapHeader from "@/features/map/components/MapHeader";
@@ -90,6 +89,15 @@ const clampMapScale = (value) => Math.min(8, Math.max(0.05, Number(value || 1)))
 const MAX_PREDICTION_MAP_MARKERS = 600;
 const predictionActionDisplayOrder = ["LOAD_BALANCE", "QUALITY_CHECK", "CAPACITY_REVIEW", "COVERAGE_CHECK", "OBSERVE"];
 const MAP_DATA_TIMEOUT_MS = 20000;
+const MAP_CONTAINER_STYLE = { width: "100%", height: "100%" };
+let mapRendererPromise;
+const loadMapRenderer = () => {
+  if (!mapRendererPromise) mapRendererPromise = import("@/features/map/renderer/deckRenderer").catch(error => {
+    mapRendererPromise = null;
+    throw error;
+  });
+  return mapRendererPromise;
+};
 const DEFAULT_WORST_CELL_METRIC_LABEL = "Selected KPI";
 const INFERRED_NEIGHBOUR_MAX_DISTANCE_KM = 8;
 const INFERRED_NEIGHBOUR_AZIMUTH_TOLERANCE_DEG = 80;
@@ -186,7 +194,7 @@ const lowerMetricIsWorse = new Set([
 ]);
 
 function asArray(value) {
-  return Array.isArray(value) ? value : [];
+  return Array.isArray(value) ? value : EMPTY_MAP_ROWS;
 }
 
 function formatNumber(value) {
@@ -1182,6 +1190,8 @@ export default function MapPage() {
   const [worstCells, setWorstCells] = useState([]);
   const [worstMessage, setWorstMessage] = useState("");
   const [loadingWorst, setLoadingWorst] = useState(false);
+  const [loadingMetrics, setLoadingMetrics] = useState(false);
+  const [mapReload, setMapReload] = useState(0);
   const [siteSummary, setSiteSummary] = useState(null);
   const [siteDetails, setSiteDetails] = useState(null);
   const [siteIntelligence, setSiteIntelligence] = useState(null);
@@ -1199,6 +1209,13 @@ export default function MapPage() {
   const [loadingSiteAnalytics, setLoadingSiteAnalytics] = useState(false);
   const [siteAnalyticsMessage, setSiteAnalyticsMessage] = useState("");
   const [map, setMap] = useState(null);
+  const [uploadsLoading, setUploadsLoading] = useState(true);
+  const [siteDataReadyKey, setSiteDataReadyKey] = useState(null);
+  const [basemapReady, setBasemapReady] = useState(false);
+  const [mapRenderer, setMapRenderer] = useState(null);
+  const [rendererError, setRendererError] = useState("");
+  const [layersReadyKey, setLayersReadyKey] = useState(null);
+  const [mapWaitExpired, setMapWaitExpired] = useState(false);
   const [selectedSite, setSelectedSite] = useState(null);
   const [selectedCell, setSelectedCell] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -1231,6 +1248,15 @@ export default function MapPage() {
   const [pciLayerMode, setPciLayerMode] = useState("same-pci");
   const [exportingMapPdf, setExportingMapPdf] = useState(false);
   const selectedPciKeyRef = useRef("");
+  const mapSourceKey = `${selectedSiteFileId}:${mapReload}`;
+  const activeMapSourceRef = useRef(mapSourceKey);
+  activeMapSourceRef.current = mapSourceKey;
+  const siteDataReady = !uploadsLoading && !loading && siteDataReadyKey === mapSourceKey;
+  const tilesReady = siteDataReady && basemapReady;
+  const mapReady = Boolean(map) && tilesReady && Boolean(mapRenderer) && layersReadyKey === mapSourceKey;
+  const initialViewportRef = useRef(null);
+  const lbControllerRef = useRef(null);
+  const predictionGenerationRef = useRef(0);
 
   // Refs for performance
   const cellPolygonsRef = useRef(new Map());
@@ -1246,10 +1272,7 @@ export default function MapPage() {
   const sidebarContentRef = useRef(null);
   const handoverPolylinesRef = useRef(new Map());
 
-  const containerStyle = {
-    width: "100%",
-    height: "100vh",
-  };
+  const containerStyle = MAP_CONTAINER_STYLE;
   const useDeckRendering = true;
 
   const scrollSidebarContent = useCallback((direction) => {
@@ -1292,6 +1315,11 @@ export default function MapPage() {
 
   const handleSiteFileChange = useCallback((value) => {
     setSelectedSiteFileId(value);
+    setSiteIntelligence(null);
+    setMapData([]);
+    setSiteDetails(null);
+    infoWindowRef.current?.close();
+    miniTooltipRef.current?.close();
     setSelectedSite(null);
     setSelectedCell(null);
     setSelectedPci("");
@@ -1301,6 +1329,9 @@ export default function MapPage() {
 
   const handleKpiFileChange = useCallback((value) => {
     setSelectedFileId(value);
+    setSiteSummary(null);
+    setSiteDetails(null);
+    setSiteIntelligence(null);
     setSelectedMetric("");
     setWorstCells([]);
     setWorstMessage("");
@@ -1331,6 +1362,7 @@ export default function MapPage() {
         setMissingCoordinateRows(0);
         setFetchError(siteUploads.length ? "Select a site upload file to plot map data." : "");
         setLoading(false);
+        setSiteDataReadyKey(`${selectedSiteFileId}:${mapReload}`);
         return;
       }
       try {
@@ -1343,7 +1375,7 @@ export default function MapPage() {
         if (response.success && response.data) {
           const rows = Array.isArray(response.data) ? response.data : [];
           const normalizedRows = rows.map(normalizeSiteMapRow);
-          const plottableRows = normalizedRows.filter((row) => row.lat !== null && row.lon !== null);
+          const plottableRows = normalizedRows.filter((row) => validCoordinates(row.lat, row.lon));
 
           setTotalSiteRows(rows.length);
           setMissingCoordinateRows(rows.length - plottableRows.length);
@@ -1374,6 +1406,7 @@ export default function MapPage() {
         }
         if (isCurrentRequest) {
           setLoading(false);
+          setSiteDataReadyKey(`${selectedSiteFileId}:${mapReload}`);
         }
       }
     };
@@ -1385,11 +1418,13 @@ export default function MapPage() {
         window.clearTimeout(timeoutId);
       }
     };
-  }, [selectedSiteFileId, siteUploads.length]);
+  }, [selectedSiteFileId, siteUploads.length, mapReload]);
 
   useEffect(() => {
+    const controller = new AbortController();
     const loadUploads = async () => {
       const response = await fetchUploads();
+      if (controller.signal.aborted) return;
       if (!response?.success) {
         setFetchError(response?.message || "Failed to load uploaded files. Please login again or restart backend.");
         setUploads([]);
@@ -1404,23 +1439,17 @@ export default function MapPage() {
       const mapSiteUploads = items.filter(isSiteUpload);
       setUploads(kpiUploads);
       setSiteUploads(mapSiteUploads);
-      const hasSelectedUpload = kpiUploads.some((upload) => String(upload.id) === String(selectedFileId));
-      if ((!selectedFileId || !hasSelectedUpload) && kpiUploads[0]?.id) {
-        setSelectedFileId(String(kpiUploads[0].id));
-      } else if (!kpiUploads.length) {
-        setSelectedFileId("");
-      }
-      const hasSelectedSiteUpload = mapSiteUploads.some((upload) => String(upload.id) === String(selectedSiteFileId));
-      if ((!selectedSiteFileId || !hasSelectedSiteUpload) && mapSiteUploads[0]?.id) {
-        setSelectedSiteFileId(String(mapSiteUploads[0].id));
-      } else if (!mapSiteUploads.length) {
-        setSelectedSiteFileId("");
-      }
+      setSelectedFileId(current => kpiUploads.some(upload => String(upload.id) === current) ? current : String(kpiUploads[0]?.id || ""));
+      setSelectedSiteFileId(current => mapSiteUploads.some(upload => String(upload.id) === current) ? current : String(mapSiteUploads[0]?.id || ""));
     };
-    loadUploads();
+    loadUploads().catch(() => { /* Cancelled requests cannot publish into a new selection. */ })
+      .finally(() => { if (!controller.signal.aborted) setUploadsLoading(false); });
+    return () => controller.abort();
   }, []);
 
   useEffect(() => {
+    const controller = new AbortController();
+    setLoadingMetrics(false);
     if (!selectedFileId) {
       setMetrics([]);
       setSelectedMetric("");
@@ -1439,8 +1468,9 @@ export default function MapPage() {
     }
 
     const loadMetrics = async () => {
-      setLoadingWorst(true);
-      const response = await fetchDynamicMetrics(selectedFileId);
+      setLoadingMetrics(true);
+      const response = await fetchDynamicMetrics(selectedFileId, { signal: controller.signal });
+      if (controller.signal.aborted) return;
       const metricItems = (response?.success
         ? (Array.isArray(response.metrics) ? response.metrics : response.data?.metrics || [])
         : [])
@@ -1450,18 +1480,21 @@ export default function MapPage() {
       const nextMetrics = metricItems.length > 0 ? metricItems : fallbackMetrics;
       setMetrics(nextMetrics);
       setSelectedMetric(metricKey(nextMetrics[0]) || "");
-      setLoadingWorst(false);
+      setLoadingMetrics(false);
     };
-    loadMetrics();
+    loadMetrics().catch(() => { /* Cancelled requests cannot publish into a new selection. */ });
+    return () => controller.abort();
   }, [selectedFileId, uploads]);
 
   useEffect(() => {
-    if (!selectedFileId) return;
+    const controller = new AbortController();
+    if (!selectedFileId) { setLoadingSiteAnalytics(false); return; }
 
     const loadSiteAnalytics = async () => {
       setLoadingSiteAnalytics(true);
       setSiteAnalyticsMessage("");
-      const summaryResponse = await fetchSiteSummary(selectedFileId);
+      const summaryResponse = await fetchSiteSummary(selectedFileId, { signal: controller.signal });
+      if (controller.signal.aborted) return;
 
       if (summaryResponse?.success) {
         setSiteSummary(summaryResponse.data);
@@ -1473,17 +1506,20 @@ export default function MapPage() {
       setLoadingSiteAnalytics(false);
     };
 
-    loadSiteAnalytics();
+    loadSiteAnalytics().catch(() => { /* Cancelled requests cannot publish into a new selection. */ });
+    return () => controller.abort();
   }, [selectedFileId]);
 
   useEffect(() => {
+    const controller = new AbortController();
     if (!selectedFileId && !selectedSiteFileId) {
       setSiteIntelligence(null);
       return;
     }
 
     const loadSiteIntelligence = async () => {
-      const response = await fetchSiteIntelligence(selectedFileId, selectedSiteFileId, 1000);
+      const response = await fetchSiteIntelligence(selectedFileId, selectedSiteFileId, 1000, { signal: controller.signal });
+      if (controller.signal.aborted) return;
       if (response?.success) {
         setSiteIntelligence(response.data || null);
       } else {
@@ -1491,26 +1527,42 @@ export default function MapPage() {
       }
     };
 
-    loadSiteIntelligence();
+    loadSiteIntelligence().catch(() => { /* Cancelled requests cannot publish into a new selection. */ });
+    return () => controller.abort();
   }, [selectedFileId, selectedSiteFileId]);
 
   useEffect(() => {
+    const controller = new AbortController();
     if (!selectedFileId) return;
 
+    const generation = ++predictionGenerationRef.current;
     const loadPredictions = async () => {
       setPredictionSummary(null);
       setPredictions([]);
-      const response = await fetchSitePredictionRecommendations({ fileId: selectedFileId, limit: 200 });
+      const response = await fetchSitePredictionRecommendations({ fileId: selectedFileId, limit: 200, signal: controller.signal });
+      if (controller.signal.aborted || generation !== predictionGenerationRef.current) return;
       const items = response?.success ? asArray(response.data?.data) : [];
       setPredictions(items);
       setPredictionSummary(summarizePredictions(items, selectedFileId));
     };
 
-    loadPredictions();
+    loadPredictions().catch(() => { /* Cancelled requests cannot publish into a new selection. */ });
+    return () => controller.abort();
+  }, [selectedFileId]);
+
+  useEffect(() => {
+    setSiteSummary(null); setSiteDetails(null); setSiteIntelligence(null);
+    setLbResult(null); setLbMessage(""); setLbLoading(false);
+    return () => { lbControllerRef.current?.abort(); };
   }, [selectedFileId]);
 
   const runLbPredictionOnMap = useCallback(async () => {
     if (!selectedFileId) return;
+    const quantile = String(lbQuantile).trim() === "" ? NaN : Number(lbQuantile);
+    if (!Number.isFinite(quantile) || quantile < 0 || quantile > 1) { setLbMessage("Quantile must be between 0 and 1."); return; }
+    lbControllerRef.current?.abort();
+    const controller = new AbortController(); lbControllerRef.current = controller;
+    const generation = ++predictionGenerationRef.current;
     setLbLoading(true);
     setLbMessage("");
     setLbResult(null);
@@ -1538,11 +1590,13 @@ export default function MapPage() {
       const response = await runLbWcfPrediction({
         fileId: selectedFileId,
         taFile: lbTaFile,
+        signal: controller.signal,
         method: lbMethod,
         quantile: Number(lbQuantile || 0.1),
         mlMode: Number(lbMlMode || 3),
       });
 
+      if (controller.signal.aborted || generation !== predictionGenerationRef.current) return;
       if (response?.success) {
         const rows = asArray(response.data?.records);
         const nextPredictions = lbRowsToMapPredictions(rows, selectedFileId);
@@ -1572,6 +1626,7 @@ export default function MapPage() {
         setPredictionSummary(summarizePredictions([], selectedFileId));
       }
     } catch (error) {
+      if (controller.signal.aborted || generation !== predictionGenerationRef.current) return;
       if (isSampleSiteMapKpiUpload(selectedUpload)) {
         applySampleLbFallback("Using bundled sample KPI rows because backend LB/WCF was not available.");
       } else {
@@ -1586,7 +1641,7 @@ export default function MapPage() {
         setPredictionSummary(summarizePredictions([], selectedFileId));
       }
     } finally {
-      setLbLoading(false);
+      if (lbControllerRef.current === controller) setLbLoading(false);
     }
   }, [lbMethod, lbMlMode, lbQuantile, lbTaFile, selectedFileId, uploads]);
 
@@ -1608,21 +1663,27 @@ export default function MapPage() {
   };
 
   useEffect(() => {
+    const controller = new AbortController();
     if (!selectedFileId) return;
 
     const loadAlarms = async () => {
       const [summaryResponse, alarmsResponse] = await Promise.all([
-        fetchKpiAlarmSummary(selectedFileId),
-        fetchKpiAlarms({ fileId: selectedFileId, status: "OPEN", page: 1, limit: 300 }),
+        fetchKpiAlarmSummary(selectedFileId, { signal: controller.signal }),
+        fetchKpiAlarms({ fileId: selectedFileId, status: "OPEN", page: 1, limit: 300 }, { signal: controller.signal }),
       ]);
+      if (controller.signal.aborted) return;
       setAlarmSummary(summaryResponse?.success ? summaryResponse.data : null);
       setAlarms(alarmsResponse?.success ? asArray(alarmsResponse.data?.items) : []);
     };
 
-    loadAlarms();
+    loadAlarms().catch(() => { /* Cancelled requests cannot publish into a new selection. */ });
+    return () => controller.abort();
   }, [selectedFileId]);
 
   useEffect(() => {
+    const controller = new AbortController();
+    setWorstCells([]);
+    setLoadingWorst(false);
     if (!selectedFileId || !selectedMetric) {
       setWorstCells([]);
       return;
@@ -1637,7 +1698,9 @@ export default function MapPage() {
           fileId: selectedFileId,
           metric: selectedMetric,
           limit: 25,
+          signal: controller.signal,
         });
+      if (controller.signal.aborted) return;
         const backendRows = response?.success ? asArray(response.data?.data) : [];
         if (backendRows.length > 0) {
           setWorstCells(backendRows);
@@ -1649,6 +1712,7 @@ export default function MapPage() {
           setWorstMessage(response?.message || "No worst cells found. Upload the file as KPI data, then select a KPI metric.");
         }
       } catch (error) {
+        if (controller.signal.aborted) return;
         if (isSampleSiteMapKpiUpload(selectedUpload)) {
           setWorstCells(buildSampleWorstCells(selectedMetric, 25));
           setWorstMessage("Using bundled sample KPI rows because backend KPI rows were not available.");
@@ -1657,10 +1721,11 @@ export default function MapPage() {
           setWorstMessage(error?.message || "Failed to load worst cells for this file.");
         }
       } finally {
-        setLoadingWorst(false);
+        if (!controller.signal.aborted) setLoadingWorst(false);
       }
     };
-    loadWorstCells();
+    loadWorstCells().catch(() => { /* Cancelled requests cannot publish into a new selection. */ });
+    return () => controller.abort();
   }, [selectedFileId, selectedMetric, uploads]);
 
   // Memoize grouped sites
@@ -1675,7 +1740,7 @@ export default function MapPage() {
         acc[item.SITEID].cells.push(item);
       }
       return acc;
-    }, {});
+    }, Object.create(null));
   }, [mapData]);
 
   const uniqueSites = useMemo(() => Object.values(groupedSites), [groupedSites]);
@@ -1762,7 +1827,11 @@ export default function MapPage() {
     [filteredSites],
   );
 
+  const nearbySites = useMemo(() => createNearbySiteIndex(filteredSites, INFERRED_NEIGHBOUR_MAX_DISTANCE_KM), [filteredSites]);
+
   const handoverRelationItems = useMemo(() => {
+    const visibleIds = new Set(filteredSites.map(site => normalizeKey(site.SITEID)));
+    const seenPairs = new Set();
     const backendRelations = siteIntelligenceRows.flatMap((row) =>
       asArray(row?.mapOverlay?.handoverRelations).map((relation) => ({
         ...relation,
@@ -1814,7 +1883,7 @@ export default function MapPage() {
             __backendIndex: index,
           };
         })
-        .filter(Boolean);
+        .filter(relation => relation && visibleIds.has(normalizeKey(relation.sourceSite?.SITEID)) && visibleIds.has(normalizeKey(relation.targetSite?.SITEID)));
 
       // The backend returns the same neighbor pair from both directions.
       // Keep one line per pair so the map remains readable.
@@ -1848,7 +1917,7 @@ export default function MapPage() {
       const sourcePcis = new Set(asArray(sourceSite.cells).map((cell) => normalizePci(cell.PCI)).filter(Boolean));
       const sourceCluster = normalizeKey(sourceSite.cluster || sourceSite.Cluster);
 
-      return filteredSites
+      return nearbySites(sourceSite)
       .filter((candidate) => normalizeKey(candidate.SITEID) !== normalizeKey(sourceSite.SITEID))
       .map((candidate) => {
         if (!Number.isFinite(Number(candidate.lat)) || !Number.isFinite(Number(candidate.lon))) {
@@ -1905,13 +1974,19 @@ export default function MapPage() {
       .filter(Boolean)
       .sort((left, right) => right.relationScore - left.relationScore);
     })
+      .filter(relation => {
+        const key = [normalizeKey(relation.sourceSite.SITEID), normalizeKey(relation.targetSite.SITEID)].sort().join("::");
+        if (seenPairs.has(key)) return false;
+        seenPairs.add(key);
+        return true;
+      })
       .map((relation) => ({
         ...relation,
         handoverCategory: relation.handoverCategories?.[0] || "NEIGHBOR",
         categoryColor: handoverCategoryColors[relation.handoverCategories?.[0] || "NEIGHBOR"],
       }))
       .slice(0, 30);
-  }, [filteredSites, focusMapSite, focusSiteIntelligence, resolveMapSite]);
+  }, [filteredSites, focusMapSite, siteIntelligenceRows, resolveMapSite, nearbySites]);
 
   const handoverRelationMap = useMemo(() => {
     const lookup = new Map();
@@ -2078,18 +2153,6 @@ export default function MapPage() {
       .slice(0, 240);
   }, [resolveMapSite, siteIntelligenceOverlayRows, siteIntelligenceRows]);
 
-  const intelligenceIssueCounts = useMemo(() => {
-    return siteIntelligenceMapItems.reduce(
-      (acc, item) => {
-        const key = item.__issueKey || "IMPACT";
-        acc.total += 1;
-        acc[key] = (acc[key] || 0) + 1;
-        return acc;
-      },
-      { total: 0, PCI_COLLISION: 0, PCI_CONFUSION: 0, OVERSHOOTING: 0, HANDOVER: 0, MISSING_NEIGHBOR: 0, IMPACT: 0 },
-    );
-  }, [siteIntelligenceMapItems]);
-
   const visibleSiteIntelligenceMapItems = useMemo(() => {
     const enabledIssues = new Set();
     if (showPciCollision) enabledIssues.add("PCI_COLLISION");
@@ -2098,7 +2161,7 @@ export default function MapPage() {
     if (showMissingNeighbours) enabledIssues.add("MISSING_NEIGHBOR");
 
     return siteIntelligenceMapItems.filter((item) => enabledIssues.has(item.__issueKey));
-  }, [handoverOverlayEnabled, showMissingNeighbours, showOvershooting, showPciCollision, showPciConfusion, siteIntelligenceMapItems]);
+  }, [showMissingNeighbours, showOvershooting, showPciCollision, showPciConfusion, siteIntelligenceMapItems]);
 
   const visibleIntelligenceIssueCounts = useMemo(() => {
     return visibleSiteIntelligenceMapItems.reduce(
@@ -2150,7 +2213,7 @@ export default function MapPage() {
   }, [siteAnalyticsRows]);
 
   const worstSites = useMemo(() => rankWorstSites(siteAnalyticsRows), [siteAnalyticsRows]);
-  const statusCounts = siteSummary?.statusCounts || {};
+  const statusCounts = useMemo(() => siteSummary?.statusCounts || {}, [siteSummary]);
 
   const worstSiteLookup = useMemo(() => {
     const lookup = new Map();
@@ -2679,40 +2742,76 @@ export default function MapPage() {
     return { lat: 20.5937, lng: 78.9629 };
   }, [mapData]);
 
+  const mapIds = useMemo(() => googleMapsMapId ? [googleMapsMapId] : undefined, [googleMapsMapId]);
+  const mapOptions = useMemo(() => ({
+    mapId: googleMapsMapId,
+    disableDefaultUI: true,
+    zoomControl: true,
+    streetViewControl: false,
+    mapTypeControl: true,
+    fullscreenControl: true,
+  }), [googleMapsMapId]);
   const { isLoaded, loadError } = useJsApiLoader({
     id: "google-map-script",
     googleMapsApiKey,
-    mapIds: googleMapsMapId ? [googleMapsMapId] : undefined,
+    mapIds,
   });
 
-  // Debounced zoom handler
-  const handleZoomChange = useCallback(() => {
-    if (map) {
-      if (zoomTimeoutRef.current) {
-        clearTimeout(zoomTimeoutRef.current);
-      }
+  // Start the basemap independently; the renderer must not delay its initial bundle.
+  if (isLoaded && !initialViewportRef.current) {
+    initialViewportRef.current = { center, zoom: mapData.length ? 11 : 5 };
+  }
 
-      zoomTimeoutRef.current = setTimeout(() => {
-        const newZoom = map.getZoom();
-        setZoomLevel(newZoom);
-      }, 200);
-    }
+  useEffect(() => {
+    if (!map) return;
+    let active = true;
+    const timer = window.setTimeout(() => {
+      if (active) setRendererError("Site layers are taking longer than expected. Reload the map to retry.");
+    }, 30000);
+    loadMapRenderer().then(renderer => {
+      window.clearTimeout(timer);
+      if (active) { setMapRenderer(renderer); setRendererError(""); }
+    }).catch(() => {
+      window.clearTimeout(timer);
+      if (active) setRendererError("Site layers could not load. Reload the map to retry.");
+    });
+    return () => { active = false; window.clearTimeout(timer); };
   }, [map]);
 
-  const onLoad = useCallback((map) => {
-    setMap(map);
+  // The first real tile paint unlocks overlays; source changes keep this map alive.
+  const handleTilesLoaded = useCallback(() => {
+    setBasemapReady(true);
+  }, []);
 
-    // Create single info window instance
+  useEffect(() => {
+    setMapWaitExpired(false);
+    if (basemapReady || loadError || !googleMapsApiKey) return;
+    const timer = window.setTimeout(() => setMapWaitExpired(true), 30000);
+    return () => window.clearTimeout(timer);
+  }, [basemapReady, loadError, googleMapsApiKey]);
+
+  useEffect(() => {
+    if (!map) return;
+    const listener = map.addListener("zoom_changed", () => {
+      window.clearTimeout(zoomTimeoutRef.current);
+      zoomTimeoutRef.current = window.setTimeout(() => setZoomLevel(map.getZoom()), 150);
+    });
+    return () => { listener.remove(); window.clearTimeout(zoomTimeoutRef.current); };
+  }, [map]);
+
+  const onLoad = useCallback((loadedMap) => {
+    setBasemapReady(false);
+    setLayersReadyKey(null);
+    setMap(loadedMap);
+    setZoomLevel(loadedMap.getZoom() || 11);
     if (window.google && !infoWindowRef.current) {
-      infoWindowRef.current = new window.google.maps.InfoWindow({
-        pixelOffset: new window.google.maps.Size(0, -10)
-      });
+      infoWindowRef.current = new window.google.maps.InfoWindow({ pixelOffset: new window.google.maps.Size(0, -10) });
     }
-
-    map.addListener('zoom_changed', handleZoomChange);
-  }, [handleZoomChange]);
+  }, []);
 
   const onUnmount = useCallback(() => {
+    setBasemapReady(false);
+    setLayersReadyKey(null);
     cellPolygonsRef.current.forEach((polygon) => polygon.setMap(null));
     siteMarkersRef.current.forEach((marker) => marker.setMap(null));
     pciMarkersRef.current.forEach((marker) => marker.setMap(null));
@@ -2724,7 +2823,7 @@ export default function MapPage() {
     predictionMarkersRef.current.clear();
     alarmMarkersRef.current.clear();
     if (deckOverlayRef.current) {
-      deckOverlayRef.current.setMap(null);
+      deckOverlayRef.current.finalize();
       deckOverlayRef.current = null;
     }
 
@@ -2741,6 +2840,9 @@ export default function MapPage() {
       clearTimeout(zoomTimeoutRef.current);
     }
 
+    handoverPolylinesRef.current.forEach(line => line.setMap(null));
+    handoverPolylinesRef.current.clear();
+    infoWindowRef.current = null;
     setMap(null);
   }, []);
 
@@ -3704,6 +3806,7 @@ export default function MapPage() {
       setExportingMapPdf(false);
     }
   }, [
+    lbMethod, lbMlMode, lbQuantile, selectedWorstMetricLabel,
     activePredictionSummary,
     alarms,
     alarmSummary,
@@ -3712,7 +3815,6 @@ export default function MapPage() {
     exportingMapPdf,
     filteredCellCount,
     filteredSites,
-    getCellBandLabel,
     getCellSector,
     getColorBySector,
     lbMessage,
@@ -4124,6 +4226,34 @@ export default function MapPage() {
     return baseColors;
   }, [getColorBySector, showWorstSites, worstCellLookup, selectedPci, selectedPciSiteId, mapVisibleSiteIds]);
 
+  const handleSiteMarkerClick = useCallback((site) => {
+    setSelectedSite(site);
+    setSelectedCell(null);
+    if (selectedPci && siteHasSelectedPci(site)) {
+      setSelectedPciSiteId(String(site.SITEID || ""));
+    }
+
+    siteMarkersRef.current.forEach((marker, key) => {
+      if (key === site.SITEID) {
+        marker.setIcon(getSiteMarkerIcon(site, true));
+      } else {
+        marker.setIcon(getSiteMarkerIcon(marker.siteData, false));
+      }
+    });
+
+    if (infoWindowRef.current && infoWindowRef.current.getMap()) {
+      infoWindowRef.current.close();
+    }
+
+    if (map) {
+      map.panTo({ lat: site.lat, lng: site.lon });
+      map.setZoom(Math.max(zoomLevel, 14));
+      infoWindowRef.current.setContent(createSiteInfoWindow(site));
+      infoWindowRef.current.setPosition({ lat: site.lat, lng: site.lon });
+      infoWindowRef.current.open(map);
+    }
+  }, [map, zoomLevel, getSiteMarkerIcon, selectedPci, siteHasSelectedPci, createSiteInfoWindow]);
+
   // Render site markers
   useEffect(() => {
     if (useDeckRendering) {
@@ -4201,60 +4331,28 @@ export default function MapPage() {
     if (siteMarkersRef.current.size > 0 && zoomLevel === 11) {
       map.fitBounds(bounds);
     }
-  }, [map, filteredSites, selectedSite, getSiteMarkerIcon, siteHasWorstCell, siteHasSelectedPci]);
-
-  const handleSiteMarkerClick = useCallback((site) => {
-    setSelectedSite(site);
-    setSelectedCell(null);
-    if (selectedPci && siteHasSelectedPci(site)) {
-      setSelectedPciSiteId(String(site.SITEID || ""));
-    }
-
-    siteMarkersRef.current.forEach((marker, key) => {
-      if (key === site.SITEID) {
-        marker.setIcon(getSiteMarkerIcon(site, true));
-      } else {
-        marker.setIcon(getSiteMarkerIcon(marker.siteData, false));
-      }
-    });
-
-    if (infoWindowRef.current && infoWindowRef.current.getMap()) {
-      infoWindowRef.current.close();
-    }
-
-    if (map) {
-      map.panTo({ lat: site.lat, lng: site.lon });
-      map.setZoom(Math.max(zoomLevel, 14));
-      infoWindowRef.current.setContent(createSiteInfoWindow(site));
-      infoWindowRef.current.setPosition({ lat: site.lat, lng: site.lon });
-      infoWindowRef.current.open(map);
-    }
-  }, [map, zoomLevel, getSiteMarkerIcon, selectedPci, siteHasSelectedPci, createSiteInfoWindow, filteredSites]);
-
-  const loadSelectedSiteDetails = useCallback(async (site) => {
-    if (!selectedFileId || !site) return;
-    const analyticsKey =
-      siteAnalyticsByName.get(normalizeKey(site.Site_Name)) ||
-      siteAnalyticsByName.get(normalizeKey(site.SITEID));
-    const siteQuery = analyticsKey?.site;
-    if (!siteQuery) {
-      setSiteDetails(null);
-      return;
-    }
-    const detailResponse = await fetchSiteDetails(selectedFileId, siteQuery);
-    setSiteDetails(detailResponse?.success ? detailResponse.data : null);
-  }, [selectedFileId, siteAnalyticsByName]);
+  }, [map, filteredSites, selectedSite, getSiteMarkerIcon, siteHasWorstCell, siteHasSelectedPci, createSiteInfoWindow, handleSiteMarkerClick, useDeckRendering, zoomLevel]);
 
   useEffect(() => {
-    if (selectedSite) {
-      loadSelectedSiteDetails(selectedSite);
-    } else {
-      setSiteDetails(null);
+    const controller = new AbortController();
+    setSiteDetails(null);
+    const analytics = selectedSite && (siteAnalyticsByName.get(normalizeKey(selectedSite.Site_Name)) || siteAnalyticsByName.get(normalizeKey(selectedSite.SITEID)));
+    if (selectedFileId && analytics?.site) {
+      fetchSiteDetails(selectedFileId, analytics.site, { signal: controller.signal })
+        .then(response => { if (!controller.signal.aborted) setSiteDetails(response?.success ? response.data : null); })
+        .catch(() => { /* Cancellation leaves the new selection untouched. */ });
     }
-  }, [selectedSite, loadSelectedSiteDetails]);
+    return () => controller.abort();
+  }, [selectedSite, selectedFileId, siteAnalyticsByName]);
 
   useEffect(() => {
     if (!map || !window.google) return;
+    if (!tilesReady || !mapRenderer) {
+      deckOverlayRef.current?.setProps({ layers: [] });
+      setLayersReadyKey(null);
+      return;
+    }
+    const { GoogleMapsOverlay, LineLayer, PolygonLayer, ScatterplotLayer, TextLayer } = mapRenderer;
 
     // Detach the deck overlay when native Google Maps rendering is active.
     // Otherwise a previously-created deck layer can keep drawing stale
@@ -4747,8 +4845,11 @@ export default function MapPage() {
           showPredictions ? predictionLabelLayer : null,
         ].filter(Boolean),
     });
+    if (activeMapSourceRef.current === mapSourceKey) setLayersReadyKey(mapSourceKey);
   }, [
+    cellRadiusScale, createSiteInfoWindow, pciLayerMode, resolveMapSite,
     map,
+    tilesReady, mapSourceKey, mapRenderer,
     useDeckRendering,
     filteredSites,
     deckCells,
@@ -4793,7 +4894,7 @@ export default function MapPage() {
     handoverPolylinesRef.current.forEach((polyline) => polyline.setMap(null));
     handoverPolylinesRef.current.clear();
 
-    if (!map || !window.google || !handoverOverlayEnabled || visibleHandoverRelationItems.length === 0) return;
+    if (useDeckRendering || !map || !window.google || !handoverOverlayEnabled || visibleHandoverRelationItems.length === 0) return;
 
     visibleHandoverRelationItems.forEach((item, index) => {
       const polyline = new window.google.maps.Polyline({
@@ -4847,7 +4948,7 @@ export default function MapPage() {
       const targetKey = item.targetSite?.SITEID || item.targetSite?.siteId || item.targetSite?.siteName || "target";
       handoverPolylinesRef.current.set(`${sourceKey}::${targetKey}::${index}`, polyline);
     });
-  }, [map, activeMapPanel, handoverOverlayEnabled, visibleHandoverRelationItems, handleSiteMarkerClick]);
+  }, [map, activeMapPanel, handoverOverlayEnabled, visibleHandoverRelationItems, handleSiteMarkerClick, useDeckRendering]);
 
   // Relation lines must not survive after every related layer is switched off.
   useEffect(() => {
@@ -4856,9 +4957,6 @@ export default function MapPage() {
     handoverPolylinesRef.current.clear();
     predictionLinesRef.current.forEach((line) => line.setMap(null));
     predictionLinesRef.current.clear();
-    if (deckOverlayRef.current) {
-      deckOverlayRef.current.setProps({ layers: [] });
-    }
   }, [handoverOverlayEnabled, showPredictions]);
 
   // Render cells
@@ -5033,7 +5131,7 @@ export default function MapPage() {
         cellPolygonsRef.current.set(cellKey, polygon);
       });
     });
-  }, [map, showCells, zoomLevel, filteredSites, getBaseRadiusByZoom, getCellLayer, getCellSector, getLayerMultiplier, getCellOverlayColors, getZIndexByLayer, createCellTriangle, createCellInfoWindow, cellMatchesVisibleSelectedPci]);
+  }, [map, showCells, zoomLevel, filteredSites, getBaseRadiusByZoom, getCellLayer, getCellSector, getLayerMultiplier, getCellOverlayColors, getZIndexByLayer, createCellTriangle, createCellInfoWindow, cellMatchesVisibleSelectedPci, selectedCell?.Cell_Name, useDeckRendering, worstCellLookup]);
 
   useEffect(() => {
     pciMarkersRef.current.forEach((marker) => marker.setMap(null));
@@ -5303,29 +5401,6 @@ export default function MapPage() {
     }
   }, [handleSiteMarkerClick, uniqueSites]);
 
-  if (loading && !selectedSiteFileId && siteUploads.length === 0) {
-    return (
-      <div className="h-screen w-full flex items-center justify-center bg-slate-950 text-white">
-        <div className="relative text-center p-8 rounded-3xl border border-slate-800 bg-slate-900/90 shadow-2xl backdrop-blur-xl max-w-md">
-          <div className="relative mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-600 shadow-xl shadow-blue-500/20">
-            <Radio className="h-10 w-10 text-white" />
-            <span className="absolute -right-1 -top-1 flex h-4 w-4">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400 opacity-75"></span>
-              <span className="relative inline-flex h-4 w-4 rounded-full bg-blue-500 border-2 border-slate-950"></span>
-            </span>
-          </div>
-          <Loader2 className="w-8 h-8 text-blue-400 animate-spin mx-auto mb-3" />
-          <h2 className="text-xl font-black tracking-tight text-white">
-            Loading Network Data...
-          </h2>
-          <p className="text-slate-400 text-xs mt-2 leading-relaxed">
-            Fetching cell tower telemetry & Spatial coverage parameters
-          </p>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="h-screen w-full flex flex-col overflow-hidden bg-slate-950 text-slate-100">
       <MapHeader
@@ -5335,25 +5410,29 @@ export default function MapPage() {
         onToggleSidebar={() => setSidebarOpen((open) => !open)}
         onOpenFilter={handleOpenFilter}
         onOpenAnalytics={handleOpenAnalytics}
-        siteMarkerScale={cellRadiusScale}
-        cellRadiusScale={siteMarkerScale}
-        onDecreaseSiteSize={() => setCellRadiusScale((value) => clampMapScale(Number((value - 0.1).toFixed(2))))}
-        onIncreaseSiteSize={() => setCellRadiusScale((value) => clampMapScale(Number((value + 0.1).toFixed(2))))}
-        onSiteSizeChange={(value) => setCellRadiusScale(clampMapScale(value))}
-        onResetSiteSize={() => setCellRadiusScale(1)}
-        onDecreaseCellRadius={() => setSiteMarkerScale((value) => clampMapScale(Number((value - 0.1).toFixed(2))))}
-        onIncreaseCellRadius={() => setSiteMarkerScale((value) => clampMapScale(Number((value + 0.1).toFixed(2))))}
-        onCellRadiusChange={(value) => setSiteMarkerScale(clampMapScale(value))}
-        onResetCellRadius={() => setSiteMarkerScale(1)}
+        siteMarkerScale={siteMarkerScale}
+        cellRadiusScale={cellRadiusScale}
+        onDecreaseSiteSize={() => setSiteMarkerScale((value) => clampMapScale(Number((value - 0.1).toFixed(2))))}
+        onIncreaseSiteSize={() => setSiteMarkerScale((value) => clampMapScale(Number((value + 0.1).toFixed(2))))}
+        onSiteSizeChange={(value) => setSiteMarkerScale(clampMapScale(value))}
+        onResetSiteSize={() => setSiteMarkerScale(1)}
+        onDecreaseCellRadius={() => setCellRadiusScale((value) => clampMapScale(Number((value - 0.1).toFixed(2))))}
+        onIncreaseCellRadius={() => setCellRadiusScale((value) => clampMapScale(Number((value + 0.1).toFixed(2))))}
+        onCellRadiusChange={(value) => setCellRadiusScale(clampMapScale(value))}
+        onResetCellRadius={() => setCellRadiusScale(1)}
         onDownloadPdf={handleDownloadMapPdf}
         exportingPdf={exportingMapPdf}
+        mapReady={mapReady}
       />
 
-      <div className="relative min-h-0 flex-1 overflow-hidden">
+      <div className="relative min-h-0 flex-1 overflow-hidden" aria-busy={!basemapReady && !loadError && Boolean(googleMapsApiKey)}>
+        {!mapReady && !loadError && googleMapsApiKey && <div data-testid="map-loading-state" className="pointer-events-none absolute right-3 top-3 z-10 max-w-xs rounded-lg border border-slate-300 bg-white/95 px-3 py-2 text-xs text-slate-700 shadow-sm">
+          {mapWaitExpired || rendererError ? <div role="alert" className="pointer-events-auto"><p>{rendererError || "Basemap is taking longer than expected."}</p><button type="button" onClick={() => window.location.reload()} className="mt-2 rounded border px-3 py-1.5">Reload map</button></div> : <p role="status" aria-live="polite">{!basemapReady ? "Loading basemap..." : !siteDataReady ? "Loading site data..." : "Loading site layers..."}</p>}
+        </div>}
         {/* Sidebar */}
         <div
           className={`${sidebarOpen ? "translate-x-0" : "-translate-x-full pointer-events-none"
-            } absolute bottom-0 left-0 top-0 z-20 w-[420px] max-w-[92vw] transition-transform duration-300 ease-in-out bg-slate-950/95 backdrop-blur-xl shadow-2xl overflow-hidden flex flex-col border-r border-slate-800/80`}
+            } absolute bottom-0 left-0 top-0 z-20 w-[420px] max-w-full transition-transform duration-300 ease-in-out bg-slate-950/95 backdrop-blur-xl shadow-2xl overflow-hidden flex flex-col border-r border-slate-800/80`}
         >
           {/* Sidebar Header */}
           <div className="bg-slate-950 p-4 text-white border-b border-slate-800/80">
@@ -5385,28 +5464,28 @@ export default function MapPage() {
                   <Building2 className="h-3.5 w-3.5 text-blue-400" />
                   <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Sites</span>
                 </div>
-                <p className="text-xl font-black text-white">{filteredSites.length}</p>
+                <p className="text-xl font-black text-white">{siteDataReady ? filteredSites.length : "..."}</p>
               </div>
               <div className="rounded-xl border border-slate-800/80 bg-slate-900/80 p-3 shadow-inner">
                 <div className="mb-1 flex items-center gap-1.5">
                   <Signal className="h-3.5 w-3.5 text-indigo-400" />
                   <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Cells</span>
                 </div>
-                <p className="text-xl font-black text-white">{filteredCellCount}</p>
+                <p className="text-xl font-black text-white">{siteDataReady ? filteredCellCount : "..."}</p>
               </div>
               <div className="rounded-xl border border-slate-800/80 bg-slate-900/80 p-3 shadow-inner">
                 <div className="mb-1 flex items-center gap-1.5">
                   <MapPin className="h-3.5 w-3.5 text-emerald-400" />
                   <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Plotted</span>
                 </div>
-                <p className="text-xl font-black text-emerald-400">{filteredCellCount}</p>
+                <p className="text-xl font-black text-emerald-400">{mapReady ? filteredCellCount : 0}</p>
               </div>
               <div className="rounded-xl border border-slate-800/80 bg-slate-900/80 p-3 shadow-inner">
                 <div className="mb-1 flex items-center gap-1.5">
                   <Activity className="h-3.5 w-3.5 text-amber-400" />
                   <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">No Lat/Lon</span>
                 </div>
-                <p className="text-xl font-black text-amber-400">{missingCoordinateRows}</p>
+                <p className="text-xl font-black text-amber-400">{siteDataReady ? missingCoordinateRows : "..."}</p>
               </div>
             </div>
           </div>
@@ -5437,6 +5516,11 @@ export default function MapPage() {
               </div>
               <MapFilterPanel
                 fetchError={fetchError}
+                dataLoading={uploadsLoading || !siteDataReady}
+                mapPreparing={!mapReady}
+                mapPreparationError={rendererError || (!googleMapsApiKey ? "Google Maps is not configured." : loadError ? "Basemap could not load. Check your connection and reload." : mapWaitExpired ? "Basemap is taking longer than expected. Check your connection and reload." : "")}
+                onReloadMap={() => window.location.reload()}
+                onRetryData={() => setMapReload(value => value + 1)}
                 totalSiteRows={totalSiteRows}
                 missingCoordinateRows={missingCoordinateRows}
                 mapDataCount={mapData.length}
@@ -5554,7 +5638,7 @@ export default function MapPage() {
                     <span className="text-sm font-bold text-red-900">Worst Cells</span>
                   </div>
                   <span className="rounded-full bg-white px-2 py-1 text-xs font-bold text-red-700">
-                    {loadingWorst ? "..." : worstCells.length}
+                    {loadingWorst || loadingMetrics ? "..." : worstCells.length}
                   </span>
                 </div>
                 {worstMessage && (
@@ -6795,7 +6879,7 @@ export default function MapPage() {
 
         {/* Main Map Area */}
         <div className="absolute inset-0">
-          <MapSiteLegend
+          {mapReady && <MapSiteLegend
             sites={filteredSites}
             selectedSite={selectedSite}
             hoveredSite={hoveredSite}
@@ -6804,8 +6888,8 @@ export default function MapPage() {
             onSiteHover={setHoveredSite}
             onSiteLeave={() => setHoveredSite(null)}
             getColorBySector={getColorBySector}
-          />
-          <MapLayerLegend
+          />}
+          {mapReady && <MapLayerLegend
             showCells={showCells}
             cellSectorCounts={mapLayerLegendCounts.cellSectorCounts}
             getColorBySector={getColorBySector}
@@ -6826,321 +6910,10 @@ export default function MapPage() {
             handoverRelationCounts={handoverRelationCounts}
             showIssueMarkers={visibleSiteIntelligenceMapItems.length > 0}
             issueMarkerCounts={visibleIntelligenceIssueCounts}
-          />
-
-          {/* Map controls moved into the Filter and Analytics panels. */}
-          <div className="hidden">
-            {(fetchError || mapData.length === 0) && (
-              <div className="bg-white/95 backdrop-blur-sm shadow-lg rounded-xl p-4 border border-amber-200 max-w-sm">
-                <div className="text-sm font-bold text-gray-900 mb-1">
-                  Site data map status
-                </div>
-                <div className="text-xs text-gray-600 leading-5">
-                  {fetchError ||
-                    (totalSiteRows > 0
-                      ? `${totalSiteRows} site row(s) found, but ${missingCoordinateRows} row(s) do not have valid lat/lon values.`
-                      : "No uploaded site rows found yet. Upload Site Data first.")}
-                </div>
-              </div>
-            )}
-
-            {selectedPci && (
-              <div className="bg-white/95 backdrop-blur-sm shadow-lg rounded-xl p-4 border border-red-200 max-w-sm">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <div className="text-xs font-semibold uppercase text-red-600">
-                      {pciLayerTitle}
-                    </div>
-                    <div className="text-lg font-black text-red-900">
-                      PCI {selectedPci}
-                    </div>
-                    <div className="text-xs text-gray-500">
-                      Source {selectedPciSiteId || "-"} • {selectedPciCount} matching cell(s)
-                    </div>
-                    <div className="text-xs text-gray-500">
-                      {pciLayerSubtitle}
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedPci("");
-                      setSelectedPciSiteId("");
-                    }}
-                    className="rounded-lg border border-red-200 px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-50"
-                  >
-                    Clear
-                  </button>
-                </div>
-                <div className="mt-3 grid grid-cols-2 gap-2">
-                  {pciLayerModeOptions.map((mode) => (
-                    <button
-                      key={mode.value}
-                      type="button"
-                      disabled={mode.disabled}
-                      onClick={() => {
-                        if (!mode.disabled) setPciLayerMode(mode.value);
-                      }}
-                      className={`rounded-lg border px-2.5 py-1.5 text-[11px] font-black transition-colors ${
-                        pciLayerMode === mode.value
-                          ? "border-red-300 bg-red-100 text-red-900"
-                          : mode.disabled
-                            ? "cursor-not-allowed border-gray-100 bg-gray-50 text-gray-300"
-                          : "border-gray-200 bg-white text-gray-500 hover:border-red-200 hover:text-red-700"
-                      }`}
-                    >
-                      {mode.label} ({mode.count})
-                    </button>
-                  ))}
-                </div>
-                {pciSummaryCards.length > 0 && (
-                  <div className={`mt-3 grid gap-2 ${pciSummaryCards.length === 1 ? "grid-cols-1" : "grid-cols-2"}`}>
-                    {pciSummaryCards.map((card) => (
-                      <button
-                        key={card.key}
-                        type="button"
-                        onClick={() => setPciLayerMode(card.key)}
-                        className={`rounded-lg border px-3 py-2 text-left ${
-                          card.summary.severity === "risk"
-                            ? "border-red-200 bg-red-100"
-                            : card.summary.severity === "watch"
-                              ? "border-amber-200 bg-amber-50"
-                              : "border-emerald-200 bg-emerald-50"
-                        }`}
-                      >
-                        <div className="text-[10px] font-black uppercase tracking-wider text-gray-500">{card.title}</div>
-                        <div className="mt-0.5 text-xs font-black text-gray-900">{card.summary.status}</div>
-                        <div className="mt-1 text-[11px] text-gray-500">{card.summary.detail}</div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {pciVisibleSites.length > 0 && (
-                  <div className="mt-3 max-h-40 space-y-2 overflow-y-auto pr-1">
-                    {pciVisibleSites.slice(0, 8).map((site, index) => (
-                      <button
-                        key={site.SITEID}
-                        type="button"
-                        onClick={() => handleSiteMarkerClick(site)}
-                        className="w-full rounded-lg border border-red-100 bg-red-50/70 px-3 py-2 text-left hover:bg-red-100"
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="truncate text-xs font-bold text-red-900">
-                            {site.inferredNeighbour ? "Same-PCI Neighbour" : "Same-PCI Site"} {index + 1}: {site.SITEID}
-                          </span>
-                          <span className="text-xs font-bold text-red-700">
-                            {site.distanceKm == null ? "-" : `${site.distanceKm.toFixed(2)} km`}
-                          </span>
-                        </div>
-                        <div className="mt-1 text-[11px] text-gray-500">
-                          {site.matchingPciCells.length} same-PCI cell(s) • {site.inferredNeighbour ? "inferred neighbour" : "reuse only"}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {pciVisibleSites.length === 0 && (
-                  <div className="mt-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs font-semibold text-gray-500">
-                    No site matches this PCI view.
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Map Layer Controls */}
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                onClick={() => setShowCells(!showCells)}
-                className={`bg-white/95 backdrop-blur-sm shadow-lg rounded-xl p-4 border-2 transition-all hover:shadow-xl ${showCells
-                    ? 'border-blue-500 bg-blue-50'
-                    : 'border-gray-200 hover:border-gray-300'
-                  }`}
-              >
-                <div className="flex items-center gap-3">
-                  {showCells ? (
-                    <Eye className="w-5 h-5 text-blue-600" />
-                  ) : (
-                    <EyeOff className="w-5 h-5 text-gray-500" />
-                  )}
-                  <div className="text-left">
-                    <div className={`text-sm font-bold ${showCells ? 'text-blue-900' : 'text-gray-900'}`}>
-                      {showCells ? 'Cells On' : 'Cells Off'}
-                    </div>
-                    <div className="text-xs text-gray-500">
-                      {showCells ? 'Coverage layer active' : 'Coverage layer hidden'}
-                    </div>
-                  </div>
-                </div>
-              </button>
-
-              <button
-                onClick={handleToggleWorstSites}
-                className={`bg-white/95 backdrop-blur-sm shadow-lg rounded-xl p-4 border-2 transition-all hover:shadow-xl ${showWorstSites
-                    ? 'border-orange-500 bg-orange-50'
-                    : 'border-gray-200 hover:border-gray-300'
-                  }`}
-              >
-                <div className="flex items-center gap-3">
-                  <AlertTriangle className={`w-5 h-5 ${showWorstSites ? 'text-orange-600' : 'text-gray-500'}`} />
-                  <div className="text-left">
-                    <div className={`text-sm font-bold ${showWorstSites ? 'text-orange-900' : 'text-gray-900'}`}>
-                      {showWorstSites ? 'Worst Sites' : 'Worst Sites Off'}
-                    </div>
-                    <div className="text-xs text-gray-500">
-                      {showWorstSites ? 'Highlight poor sites' : 'Hide poor site highlights'}
-                    </div>
-                  </div>
-                </div>
-              </button>
-
-              <button
-                onClick={handleTogglePredictions}
-                className={`bg-white/95 backdrop-blur-sm shadow-lg rounded-xl p-4 border-2 transition-all hover:shadow-xl ${showPredictions
-                    ? 'border-purple-500 bg-purple-50'
-                    : 'border-gray-200 hover:border-gray-300'
-                  }`}
-              >
-                <div className="flex items-center gap-3">
-                  <Sparkles className={`w-5 h-5 ${showPredictions ? 'text-purple-600' : 'text-gray-500'}`} />
-                  <div className="text-left">
-                    <div className={`text-sm font-bold ${showPredictions ? 'text-purple-900' : 'text-gray-900'}`}>
-                      {showPredictions ? 'Predictions' : 'Predictions Off'}
-                    </div>
-                    <div className="text-xs text-gray-500">
-                      {showPredictions ? 'Show recommendation flags' : 'Hide recommendation flags'}
-                    </div>
-                  </div>
-                </div>
-              </button>
-
-              <button
-                onClick={() => setShowAlarms(!showAlarms)}
-                className={`bg-white/95 backdrop-blur-sm shadow-lg rounded-xl p-4 border-2 transition-all hover:shadow-xl ${showAlarms
-                    ? 'border-red-500 bg-red-50'
-                    : 'border-gray-200 hover:border-gray-300'
-                  }`}
-              >
-                <div className="flex items-center gap-3">
-                  <AlertTriangle className={`w-5 h-5 ${showAlarms ? 'text-red-600' : 'text-gray-500'}`} />
-                  <div className="text-left">
-                    <div className={`text-sm font-bold ${showAlarms ? 'text-red-900' : 'text-gray-900'}`}>
-                      {showAlarms ? 'Alarms' : 'Alarms Off'}
-                    </div>
-                    <div className="text-xs text-gray-500">
-                      {showAlarms ? 'Show alarm markers' : 'Hide alarm markers'}
-                    </div>
-                  </div>
-                </div>
-              </button>
-            </div>
-
-            {showPredictions && asArray(displayPredictions).length > 0 && (
-              <div className="bg-white/95 backdrop-blur-sm shadow-lg rounded-xl p-4 border border-purple-200">
-                <div className="flex items-center gap-2 mb-2">
-                  <Sparkles className="w-4 h-4 text-purple-600" />
-                  <span className="text-sm font-semibold text-gray-900">
-                    Prediction Layer
-                  </span>
-                </div>
-                <div className="text-2xl font-bold text-purple-700">
-                  {formatNumber(predictionMarkerCount)} / {formatNumber(displayPredictions.length)}
-                </div>
-                <div className="mt-1 text-xs text-gray-500">
-                  Colored prediction marker(s). Cells hidden in prediction mode.
-                </div>
-                <div className="mt-3 grid grid-cols-2 gap-2">
-                  {[
-                    ["Load balance", "LOAD_BALANCE"],
-                    ["Quality", "QUALITY_CHECK"],
-                    ["Capacity", "CAPACITY_REVIEW"],
-                    ["Coverage", "COVERAGE_CHECK"],
-                  ].map(([label, action]) => (
-                    <div key={action} className="flex items-center gap-2 rounded-lg bg-slate-50 px-2 py-1">
-                      <span
-                        className="h-3 w-3 rounded-full"
-                        style={{ backgroundColor: predictionActionColors[action] }}
-                      />
-                      <span className="text-[11px] font-bold text-slate-600">{label}</span>
-                    </div>
-                  ))}
-                </div>
-                {Math.max(0, asArray(displayPredictions).length - predictionMarkerCount) > 0 && (
-                  <div className="mt-2 rounded-lg bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700">
-                    {formatNumber(Math.max(0, asArray(displayPredictions).length - predictionMarkerCount))} prediction(s) not mapped because site/cell lat-lon was not found in the selected Site Data file.
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Coverage Stats */}
-            <div className="bg-white/95 backdrop-blur-sm shadow-lg rounded-xl p-4 border border-gray-200">
-              <div className="flex items-center gap-2 mb-2">
-                <Activity className="w-4 h-4 text-blue-500" />
-                <span className="text-sm font-semibold text-gray-900">
-                  Coverage Status
-                </span>
-              </div>
-              <div className="text-2xl font-bold text-blue-600">
-                {formatNumber(showCells ? deckCells.length : 0)}
-              </div>
-              <div className="text-xs text-gray-500 mt-1">
-                {showCells ? 'Cells visible' : 'Cells hidden'} @ Zoom {zoomLevel}
-              </div>
-            </div>
-
-            <div className="bg-white/95 backdrop-blur-sm shadow-lg rounded-xl p-4 border border-gray-200">
-              <h3 className="text-xs font-semibold text-gray-700 mb-3 flex items-center gap-2">
-                <MapPin className="w-4 h-4" />
-                Site Type
-              </h3>
-              <div className="grid grid-cols-2 gap-2">
-                {[
-                  ["4G/LTE", "#2563EB"],
-                  ["5G/NR", "#8B5CF6"],
-                  ["Multi band", "#14B8A6"],
-                  ["Multi tech", "#9333EA"],
-                ].map(([label, color]) => (
-                  <div key={label} className="flex items-center gap-2">
-                    <div
-                      className="h-4 w-4 rounded-full border-2 border-white shadow-sm"
-                      style={{ backgroundColor: color }}
-                    />
-                    <span className="text-xs font-medium text-gray-600">{label}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* MODIFIED: Legend - Now showing 4 sectors in 2x2 grid */}
-            <div className="bg-white/95 backdrop-blur-sm shadow-lg rounded-xl p-4 border border-gray-200">
-              <h3 className="text-xs font-semibold text-gray-700 mb-3 flex items-center gap-2">
-                <Layers className="w-4 h-4" />
-                Sectors
-              </h3>
-              <div className="grid grid-cols-2 gap-2">
-                {["A", "B", "C", "D"].map((sector) => {
-                  const colors = getColorBySector(sector, 1);
-                  return (
-                    <div key={sector} className="flex items-center gap-2">
-                      <div
-                        className="w-4 h-4 rounded shadow-sm flex-shrink-0"
-                        style={{
-                          backgroundColor: colors.fill,
-                          border: `2px solid ${colors.stroke}`,
-                        }}
-                      ></div>
-                      <span className="text-xs text-gray-600 font-medium">
-                        {sector}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
+          />}
 
           {/* Map */}
-          {loadError ? (
+          {!googleMapsApiKey || loadError ? (
             <div className="h-full w-full flex items-center justify-center bg-gray-100 px-6 text-center">
               <p className="text-gray-600">
                 Failed to load Google Maps. Check `VITE_GOOGLE_MAPS_API_KEY` and
@@ -7150,18 +6923,12 @@ export default function MapPage() {
           ) : isLoaded ? (
             <GoogleMap
               mapContainerStyle={containerStyle}
-              center={center}
-              zoom={11}
+              center={initialViewportRef.current?.center || center}
+              zoom={initialViewportRef.current?.zoom || 5}
               onLoad={onLoad}
+              onTilesLoaded={handleTilesLoaded}
               onUnmount={onUnmount}
-              options={{
-                mapId: googleMapsMapId,
-                disableDefaultUI: true,
-                zoomControl: true,
-                streetViewControl: false,
-                mapTypeControl: true,
-                fullscreenControl: true,
-              }}
+              options={mapOptions}
             />
           ) : (
             <div className="h-full w-full flex items-center justify-center bg-gray-100">
@@ -7171,7 +6938,7 @@ export default function MapPage() {
 
           {/* Selected Cell Panel HUD */}
           {selectedCell && (
-            <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 z-20 w-[480px] max-w-[92vw] rounded-2xl border border-slate-800/90 bg-slate-950/95 p-5 text-white shadow-2xl backdrop-blur-xl ring-1 ring-white/10">
+            <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 z-20 w-[480px] max-w-[calc(100%-1rem)] rounded-2xl border border-slate-800/90 bg-slate-950/95 p-5 text-white shadow-2xl backdrop-blur-xl ring-1 ring-white/10">
               <div className="flex items-start justify-between mb-4 border-b border-slate-800/80 pb-3">
                 <div className="flex-1 min-w-0 pr-3">
                   <div className="flex items-center gap-2 mb-1">

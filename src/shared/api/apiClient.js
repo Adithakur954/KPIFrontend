@@ -2,7 +2,7 @@
 const DEFAULT_BASE_URL = "http://localhost:3001";
 
 export const API_BASE_URL =
-  import.meta.env.VITE_API_URL?.trim() || DEFAULT_BASE_URL;
+  import.meta.env?.VITE_API_URL?.trim() || DEFAULT_BASE_URL;
 
 function buildUrl(endpoint, query) {
   const cleanBaseUrl = API_BASE_URL.replace(/\/+$/, "");
@@ -22,7 +22,7 @@ function buildUrl(endpoint, query) {
 
 export async function apiFetch(
   endpoint,
-  { query, body, headers = {}, ...options } = {},
+  { query, body, headers = {}, authRequired = false, responseType = "json", ...options } = {},
 ) {
   const isFormData = typeof FormData !== "undefined" && body instanceof FormData;
   const method = String(options.method || "GET").toUpperCase();
@@ -53,6 +53,7 @@ export async function apiFetch(
     });
 
   const parseResponse = async (response) => {
+    if (response.ok && responseType === "blob") return { response, payload: await response.blob() };
     let payload = null;
     try {
       payload = await response.json();
@@ -66,7 +67,7 @@ export async function apiFetch(
     await performRequest(finalHeaders),
   );
 
-  if (response.status === 401 && token && method === "GET") {
+  if (response.status === 401 && token && method === "GET" && !authRequired) {
     const retryHeaders = { ...headers };
     delete retryHeaders.Authorization;
     ({ response, payload } = await parseResponse(
@@ -78,6 +79,7 @@ export async function apiFetch(
     const message = payload?.message || `API Error: ${response.status}`;
     const error = new Error(message);
     error.status = response.status;
+    error.payload = payload;
 
     if (response.status === 401 && typeof window !== "undefined") {
       localStorage.removeItem("authToken");

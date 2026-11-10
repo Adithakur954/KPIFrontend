@@ -16,6 +16,7 @@ import {
   ChevronRight,
   SlidersHorizontal,
   FileCheck,
+  FileBarChart,
   UserPlus,
   ShieldCheck,
 } from "lucide-react";
@@ -36,6 +37,7 @@ export default function Sidebar({
   const navItems = [
     { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
     { to: "/kpi", label: "KPI View", icon: BarChart3 },
+    { to: "/reports", label: "Daily Reports", icon: FileBarChart },
     { to: "/map", label: "Map View", icon: Map },
     { to: "/worstcell", label: "Anomaly Detection", icon: AlertTriangle, roles: ["SUPER_ADMIN", "ADMIN"] },
     { to: "/recommendation", label: "RCA Recommendation", icon: Lightbulb, roles: ["SUPER_ADMIN", "ADMIN"] },

@@ -9,25 +9,29 @@ export async function fetchValidationReport(fileId) {
   }
 }
 
-export async function fetchDynamicMetrics(fileId) {
+export async function fetchDynamicMetrics(fileId, { signal } = {}) {
   try {
     return await apiFetch("kpi/dynamic/metrics", {
       method: "GET",
+      signal,
       query: { fileId },
     });
   } catch (error) {
+    if (error?.name === "AbortError") throw error;
     console.error("[validationReportService] fetchDynamicMetrics failed", error);
     return { success: false, message: error.message || "Failed to fetch KPI metrics", metrics: [] };
   }
 }
 
-export async function fetchWorstCells({ fileId, metric, limit = 10 }) {
+export async function fetchWorstCells({ fileId, metric, limit = 10, signal }) {
   try {
     return await apiFetch("kpi/worst-cells", {
       method: "GET",
+      signal,
       query: { fileId, metric, limit },
     });
   } catch (error) {
+    if (error?.name === "AbortError") throw error;
     console.error("[validationReportService] fetchWorstCells failed", error);
     return { success: false, message: error.message || "Failed to fetch worst cells", data: null };
   }

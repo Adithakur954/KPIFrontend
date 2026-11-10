@@ -1,6 +1,7 @@
 import { useAuth } from "@/shared/context/AuthContext";
 import { Loader2 } from "lucide-react";
 import MainLayout from "@/shared/components/layout/MainLayout";
+import PageBoundary from "@/shared/components/common/PageBoundary";
 import { Navigate, Outlet } from "react-router-dom";
 
 export default function ProtectedRoute() {
@@ -26,7 +27,7 @@ export default function ProtectedRoute() {
   // Render children with MainLayout
   return (
     <MainLayout>
-      <Outlet />
+      <PageBoundary><Outlet /></PageBoundary>
     </MainLayout>
   );
 }

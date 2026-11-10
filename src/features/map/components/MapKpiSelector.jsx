@@ -1,3 +1,5 @@
+import { useId } from "react";
+
 export default function MapKpiSelector({
   uploads,
   selectedFileId,
@@ -8,13 +10,16 @@ export default function MapKpiSelector({
   showMetric = false,
   compact = false,
 }) {
+  const uploadId = useId();
+  const metricId = useId();
   return (
     <div className={compact ? "space-y-2" : "space-y-3"}>
       <div>
-        <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-400">
+        <label htmlFor={uploadId} className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-400">
           KPI Upload File
         </label>
         <select
+          id={uploadId}
           value={selectedFileId}
           onChange={(event) => onKpiFileChange(event.target.value)}
           className="w-full rounded-xl border border-slate-700/80 bg-slate-900/90 px-3.5 py-2.5 text-sm font-semibold text-slate-100 outline-none transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
@@ -35,10 +40,11 @@ export default function MapKpiSelector({
 
       {showMetric && (
         <div>
-          <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-400">
+          <label htmlFor={metricId} className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-400">
             Worst Cell KPI Metric
           </label>
           <select
+            id={metricId}
             value={selectedMetric}
             onChange={(event) => onMetricChange(event.target.value)}
             disabled={!selectedFileId || metrics.length === 0}

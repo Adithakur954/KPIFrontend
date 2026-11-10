@@ -43,6 +43,7 @@ export default function LbPredictionControls({
       </div>
       <div className="grid grid-cols-2 gap-2">
         <select
+          disabled={loading}
           value={method}
           onChange={(event) => onMethodChange(event.target.value)}
           className="rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-[11px] font-semibold text-slate-200 outline-none focus:border-purple-500"
@@ -52,6 +53,7 @@ export default function LbPredictionControls({
           <option value="ml-based" className="bg-slate-900 text-slate-100">ML only</option>
         </select>
         <select
+          disabled={loading}
           value={mlMode}
           onChange={(event) => onMlModeChange(event.target.value)}
           className="rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-[11px] font-semibold text-slate-200 outline-none focus:border-purple-500"
@@ -61,6 +63,7 @@ export default function LbPredictionControls({
           <option value="3" className="bg-slate-900 text-slate-100">Both</option>
         </select>
         <input
+          disabled={loading}
           value={quantile}
           onChange={(event) => onQuantileChange(event.target.value)}
           type="number"
@@ -79,6 +82,7 @@ export default function LbPredictionControls({
             {taFile?.name || "Optional TA File"}
           </span>
           <input
+            disabled={loading}
             type="file"
             accept=".xlsx,.xls,.csv"
             onChange={(event) => onTaFileChange(event.target.files?.[0] || null)}

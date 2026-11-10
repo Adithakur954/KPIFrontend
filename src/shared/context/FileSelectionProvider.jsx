@@ -5,20 +5,17 @@ import UserContext from "./FileSelectionContext";
 const GLOBAL_FILE_SELECTION_STORAGE_KEY = "globalSelectedKpiFileId:v1";
 
 const FileContextProvider = ({ children }) => {
-  const [selectedFileId, setSelectedFileId] = useState("");
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
+  const [selectedFileId, setSelectedFileId] = useState(() => {
+    if (typeof window === "undefined") return "";
     try {
       const savedValue = window.localStorage.getItem(
         GLOBAL_FILE_SELECTION_STORAGE_KEY,
       );
-      if (!savedValue) return;
-      setSelectedFileId(String(savedValue));
+      return savedValue ? String(savedValue) : "";
     } catch {
-      // ignore storage failures
+      return "";
     }
-  }, []);
+  });
 
   useEffect(() => {
     if (typeof window === "undefined") return;

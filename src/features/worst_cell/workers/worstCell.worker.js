@@ -1,3 +1,10 @@
+// Missing measurements are not zero; exclude them from averages and comparisons.
+const metricNumber = value => {
+  if (value == null || typeof value === "boolean" || String(value).trim() === "") return NaN;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : NaN;
+};
+
 const normalizeKey = (value) =>
   String(value || "")
     .toLowerCase()
@@ -92,7 +99,7 @@ const aggregateByDimension = (rows, dimensionKey, start, end) => {
     const dimensionValue = String(readValueByKey(row, dimensionKey) || "").trim();
     if (!dimensionValue) return;
 
-    const numericValue = Number(row.value);
+    const numericValue = metricNumber(row.value);
     if (Number.isNaN(numericValue)) return;
 
     const currentMeta = extractDimensionMeta(row, dimensionKey, dimensionValue);
@@ -135,7 +142,7 @@ const aggregateDailyByDimension = (rows, dimensionKey, start, end) => {
     const dimensionValue = String(readValueByKey(row, dimensionKey) || "").trim();
     if (!dimensionValue) return;
 
-    const numericValue = Number(row.value);
+    const numericValue = metricNumber(row.value);
     if (Number.isNaN(numericValue)) return;
 
     const rowMeta = extractDimensionMeta(row, dimensionKey, dimensionValue);
@@ -197,8 +204,8 @@ const evaluateComparison = (postValue, preValue, operator) => {
 };
 
 const evaluateThreshold = (value, threshold, operator) => {
-  const numericValue = Number(value);
-  const numericThreshold = Number(threshold);
+  const numericValue = metricNumber(value);
+  const numericThreshold = metricNumber(threshold);
   if (Number.isNaN(numericValue) || Number.isNaN(numericThreshold)) return false;
 
   switch (operator) {
@@ -231,7 +238,7 @@ const analyzeThresholdMetric = (payload) => {
   const failedDimensions = [];
   const hasThreshold =
     typeof thresholdContext?.thresholdValue === "number" &&
-    !Number.isNaN(thresholdContext?.thresholdValue);
+    Number.isFinite(thresholdContext?.thresholdValue);
 
   rangeMap.forEach((item, cell) => {
     if (!hasThreshold) return;
@@ -352,7 +359,7 @@ const analyzeBadDaysByCell = (payload) => {
   const comparedCellSet = new Set();
 
   (metrics || []).forEach((metricPayload) => {
-    const thresholdValue = Number(metricPayload?.thresholdContext?.thresholdValue);
+    const thresholdValue = metricNumber(metricPayload?.thresholdContext?.thresholdValue);
     const hasThreshold = Number.isFinite(thresholdValue);
     if (!hasThreshold) return;
 

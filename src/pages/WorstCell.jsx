@@ -1,3 +1,5 @@
+import { BoundedAnalyticsCache, analyticsCacheScope, invalidateAnalyticsCache, ANALYTICS_CACHE_TTL_MS } from "@/shared/api/analyticsCache";
+import useAnalyticsRefresh from "@/shared/hooks/useAnalyticsRefresh";
 import React, {
   useCallback,
   useContext,
@@ -61,13 +63,15 @@ const DIMENSION_PREFERENCE = [
 ];
 const WORST_CELL_PAGE_STATE_KEY = "worstCellPageState:v1";
 const createWorstCellRuntimeCache = () => ({
+  scope: analyticsCacheScope(),
+  createdAt: Date.now(),
   analysisRows: [],
   cellBadDayRows: [],
   fileOptions: [],
-  fileContextByFileId: new Map(),
-  thresholdConfigByFileId: new Map(),
-  metricBatchByFileId: new Map(),
-  analysisResultByKey: new Map(),
+  fileContextByFileId: new BoundedAnalyticsCache(2),
+  thresholdConfigByFileId: new BoundedAnalyticsCache(2),
+  metricBatchByFileId: new BoundedAnalyticsCache(2),
+  analysisResultByKey: new BoundedAnalyticsCache(8),
   pendingFileOptionsPromise: null,
   pendingFileContextByFileId: new Map(),
   pendingThresholdConfigByFileId: new Map(),
@@ -77,22 +81,22 @@ const createWorstCellRuntimeCache = () => ({
 let worstCellRuntimeCache = createWorstCellRuntimeCache();
 
 const getWorstCellRuntimeCache = () => {
-  if (!worstCellRuntimeCache || typeof worstCellRuntimeCache !== "object") {
+  if (!worstCellRuntimeCache || typeof worstCellRuntimeCache !== "object" || worstCellRuntimeCache.scope !== analyticsCacheScope() || Date.now() - worstCellRuntimeCache.createdAt >= ANALYTICS_CACHE_TTL_MS) {
     worstCellRuntimeCache = createWorstCellRuntimeCache();
     return worstCellRuntimeCache;
   }
 
   if (!(worstCellRuntimeCache.fileContextByFileId instanceof Map)) {
-    worstCellRuntimeCache.fileContextByFileId = new Map();
+    worstCellRuntimeCache.fileContextByFileId = new BoundedAnalyticsCache(2);
   }
   if (!(worstCellRuntimeCache.thresholdConfigByFileId instanceof Map)) {
-    worstCellRuntimeCache.thresholdConfigByFileId = new Map();
+    worstCellRuntimeCache.thresholdConfigByFileId = new BoundedAnalyticsCache(2);
   }
   if (!(worstCellRuntimeCache.metricBatchByFileId instanceof Map)) {
-    worstCellRuntimeCache.metricBatchByFileId = new Map();
+    worstCellRuntimeCache.metricBatchByFileId = new BoundedAnalyticsCache(2);
   }
   if (!(worstCellRuntimeCache.analysisResultByKey instanceof Map)) {
-    worstCellRuntimeCache.analysisResultByKey = new Map();
+    worstCellRuntimeCache.analysisResultByKey = new BoundedAnalyticsCache(8);
   }
   if (!(worstCellRuntimeCache.pendingFileContextByFileId instanceof Map)) {
     worstCellRuntimeCache.pendingFileContextByFileId = new Map();
@@ -410,6 +414,7 @@ const getDirectionalAverageHeatColor = (
 };
 
 export default function WorstCell() {
+  const refreshRevision = useAnalyticsRefresh();
   const location = useLocation();
   const navigate = useNavigate();
   const hasHydratedRef = useRef(false);
@@ -425,6 +430,8 @@ export default function WorstCell() {
     postEnd: "",
   });
   const [loading, setLoading] = useState(false);
+  const [contextLoading, setContextLoading] = useState(true);
+  const [thresholdLoading, setThresholdLoading] = useState(true);
   const [analysisRows, setAnalysisRows] = useState([]);
   const [cellBadDayRows, setCellBadDayRows] = useState([]);
   const [loadError, setLoadError] = useState("");
@@ -455,6 +462,7 @@ export default function WorstCell() {
   const [updatingMetricKeys, setUpdatingMetricKeys] = useState({});
   const [lastRunContext, setLastRunContext] = useState(null);
   const sharedSelectedFileId = String(selectedFileId || "");
+  const inputSignature = useMemo(() => JSON.stringify([sharedSelectedFileId, selectedDimensionKey, filterMode, resultFormat, compareRanges, quickDateDays, customQuickDays, minimumBadDaysInput]), [sharedSelectedFileId, selectedDimensionKey, filterMode, resultFormat, compareRanges, quickDateDays, customQuickDays, minimumBadDaysInput]);
   const workerRef = useRef(null);
   const workerRequestIdRef = useRef(0);
   const workerPendingRef = useRef(new Map());
@@ -462,10 +470,16 @@ export default function WorstCell() {
   const metricRowsRequestCacheRef = useRef(new Map());
   const metricRowsBatchRequestRef = useRef(new Map());
   const analysisRunIdRef = useRef(0);
+  const runAnalysisRef = useRef(null);
+  const [dimensionPages, setDimensionPages] = useState({});
+  const dimensionPageFor = row => Math.min(dimensionPages[row.metricKey] || 1, Math.max(1, Math.ceil(row.failedDimensions.length / 50)));
+  const activeFileRef = useRef(sharedSelectedFileId);
+  activeFileRef.current = sharedSelectedFileId;
+  const [cellPage, setCellPage] = useState(1);
   const pendingNavigationJumpRef = useRef(null);
   const navigationFocusActiveRef = useRef(false);
   const badDaysDebugLog = useCallback((label, payload) => {
-    console.log(`[WorstCell BadDays Debug] ${label}`, payload);
+    if (import.meta.env.DEV && window.localStorage.getItem("kpiDebug") === "1") console.log(`[WorstCell BadDays Debug] ${label}`, payload);
   }, []);
 
   useEffect(() => {
@@ -535,7 +549,7 @@ export default function WorstCell() {
 
       // Restore heavy fetched data from in-memory runtime cache (survives route switches).
       const runtimeCache = getWorstCellRuntimeCache();
-      if (runtimeCache && typeof runtimeCache === "object") {
+      if (runtimeCache && typeof runtimeCache === "object" && runtimeCache.resultFileId === sharedSelectedFileId) {
         setAnalysisRows(
           Array.isArray(runtimeCache.analysisRows)
             ? runtimeCache.analysisRows
@@ -553,7 +567,7 @@ export default function WorstCell() {
     } catch {
       // ignore invalid persisted state
     }
-  }, []);
+  }, [sharedSelectedFileId]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -611,14 +625,18 @@ export default function WorstCell() {
     runtimeCache.cellBadDayRows = Array.isArray(cellBadDayRows)
       ? cellBadDayRows
       : [];
+    runtimeCache.resultFileId = lastRunContext?.selectedFileId || "";
     runtimeCache.updatedAt = Date.now();
-  }, [analysisRows, cellBadDayRows]);
+  }, [analysisRows, cellBadDayRows, lastRunContext]);
 
   useEffect(() => {
+    analysisRunIdRef.current++;
+    setAnalysisRows([]); setCellBadDayRows([]); setLastRunContext(null);
+    setLoading(false); setLoadError(""); setUpdatingMetricKeys({}); setUpdatingThresholdKey("");
     metricRowsCacheRef.current.clear();
     metricRowsRequestCacheRef.current.clear();
     metricRowsBatchRequestRef.current.clear();
-  }, [selectedFileId]);
+  }, [selectedFileId, refreshRevision, inputSignature]);
 
   useEffect(() => {
     const worker = new Worker(
@@ -626,6 +644,7 @@ export default function WorstCell() {
       { type: "module" },
     );
     const pendingMap = workerPendingRef.current;
+    const analysisGeneration = analysisRunIdRef;
 
     workerRef.current = worker;
 
@@ -648,6 +667,7 @@ export default function WorstCell() {
     };
 
     return () => {
+      analysisGeneration.current++;
       worker.terminate();
       workerRef.current = null;
       pendingMap.forEach(({ reject }) =>
@@ -655,9 +675,10 @@ export default function WorstCell() {
       );
       pendingMap.clear();
     };
-  }, []);
+  }, [sharedSelectedFileId, refreshRevision, inputSignature]);
 
   useEffect(() => {
+    let active = true;
     const loadFiles = async () => {
       const runtimeCache = getWorstCellRuntimeCache();
       if (runtimeCache.fileOptions.length) {
@@ -671,6 +692,7 @@ export default function WorstCell() {
       if (!runtimeCache.pendingFileOptionsPromise) {
         runtimeCache.pendingFileOptionsPromise = fetchKpiUploadHistory()
           .then((response) => {
+            if (!response?.success) throw new Error(response?.message || "KPI file list could not load.");
             const files = response?.success ? response.data || [] : [];
             runtimeCache.fileOptions = Array.isArray(files) ? files : [];
             runtimeCache.pendingFileOptionsPromise = null;
@@ -683,15 +705,20 @@ export default function WorstCell() {
       }
 
       const files = await runtimeCache.pendingFileOptionsPromise;
+      if (!active) return;
       setFileOptions(files);
       if (files.length) {
         setSelectedFileId((prev) => prev || String(files[0].id));
       }
     };
-    loadFiles();
-  }, []);
+    loadFiles().catch(error => { if (active) setLoadError(error.message); });
+    return () => { active = false; };
+  }, [setSelectedFileId, refreshRevision]);
 
   useEffect(() => {
+    let active = true;
+    setContextLoading(true);
+    setMetrics([]); setColumns([]); setSelectedDimensionKey("");
     const loadFileContext = async () => {
       if (!selectedFileId) {
         if (!sharedSelectedFileId) {
@@ -716,6 +743,7 @@ export default function WorstCell() {
             fetchDynamicKpiColumns(fileId),
           ])
             .then(([metricResponse, columnResponse]) => {
+              if (!metricResponse?.success || !columnResponse?.success) throw new Error("KPI metrics or columns could not load. Reload data to retry.");
               const nextMetrics = metricResponse?.success
                 ? metricResponse.data || []
                 : [];
@@ -748,6 +776,7 @@ export default function WorstCell() {
         ? cachedContext.columns
         : [];
 
+      if (!active) return;
       setMetrics(nextMetrics);
       setColumns(nextColumns);
       setOperatorsByMetric((prev) => {
@@ -775,8 +804,9 @@ export default function WorstCell() {
       setSelectedDimensionKey(matchedPreferredKey || dimensionKeys[0] || "");
     };
 
-    loadFileContext();
-  }, [sharedSelectedFileId]);
+    loadFileContext().catch(error => { if (active) setLoadError(error.message); }).finally(() => { if (active) setContextLoading(false); });
+    return () => { active = false; };
+  }, [sharedSelectedFileId, selectedFileId, refreshRevision]);
 
   useEffect(() => {
     const jump = pendingNavigationJumpRef.current;
@@ -852,7 +882,7 @@ export default function WorstCell() {
     }
 
     pendingNavigationJumpRef.current = null;
-    void runAnalysis({ preserveNavigationFocus: true });
+    void runAnalysisRef.current?.({ preserveNavigationFocus: true });
   }, [
     cellBadDaysViewMode,
     cellHeatmapSearch,
@@ -869,6 +899,7 @@ export default function WorstCell() {
 
   useEffect(() => {
     let mounted = true;
+    setThresholdLoading(true);
 
     const loadThresholdConfig = async () => {
       const fileId = String(selectedFileId || "");
@@ -963,11 +994,11 @@ export default function WorstCell() {
       setThresholdOperators(cachedConfig?.operators || {});
     };
 
-    loadThresholdConfig();
+    loadThresholdConfig().catch(error => { if (mounted) setLoadError(error.message); }).finally(() => { if (mounted) setThresholdLoading(false); });
     return () => {
       mounted = false;
     };
-  }, [selectedFileId]);
+  }, [selectedFileId, refreshRevision]);
 
   useEffect(() => {
     setThresholdDrafts((prev) => {
@@ -1098,6 +1129,7 @@ export default function WorstCell() {
   const getCachedMetricRows = useCallback(
     async (fileId, metricKey) => {
       if (!fileId || !metricKey) return [];
+      const cacheScope = analyticsCacheScope();
       const cacheKey = `${String(fileId)}::${String(metricKey)}`;
 
       if (metricRowsCacheRef.current.has(cacheKey)) {
@@ -1107,6 +1139,8 @@ export default function WorstCell() {
       if (!metricRowsRequestCacheRef.current.has(cacheKey)) {
         const requestPromise = fetchDynamicKpiData(fileId, metricKey)
           .then((response) => {
+            if (cacheScope !== analyticsCacheScope() || activeFileRef.current !== String(fileId)) return [];
+            if (!response?.success) throw new Error(response?.message || "KPI metric data could not load.");
             const nextRows = Array.isArray(response?.data) ? response.data : [];
             metricRowsCacheRef.current.set(cacheKey, nextRows);
             metricRowsRequestCacheRef.current.delete(cacheKey);
@@ -1126,11 +1160,12 @@ export default function WorstCell() {
 
   const hydrateMetricRowsCacheFromBatch = useCallback(async (fileId) => {
     if (!fileId) return new Map();
+    const cacheScope = analyticsCacheScope();
     const batchCacheKey = String(fileId);
     const runtimeCache = getWorstCellRuntimeCache();
 
-    if (runtimeCache.metricBatchByFileId.has(batchCacheKey)) {
-      const cachedBatch = runtimeCache.metricBatchByFileId.get(batchCacheKey);
+    const cachedBatch = runtimeCache.metricBatchByFileId.get(batchCacheKey);
+    if (cachedBatch) {
       cachedBatch.forEach((rows, metricKey) => {
         metricRowsCacheRef.current.set(`${batchCacheKey}::${metricKey}`, rows);
       });
@@ -1143,6 +1178,8 @@ export default function WorstCell() {
     ) {
       const batchRequest = fetchDynamicKpiBatchData(fileId)
         .then((response) => {
+          if (cacheScope !== analyticsCacheScope() || activeFileRef.current !== String(fileId)) return new Map();
+          if (!response?.success) throw new Error(response?.message || "KPI batch data could not load.");
           const metricEntries = Array.isArray(response?.data)
             ? response.data
             : [];
@@ -1217,6 +1254,7 @@ export default function WorstCell() {
       return;
     }
 
+    const sourceFileId = String(selectedFileId || "");
     setUpdatingThresholdKey(thresholdKey);
     setLoadError("");
     try {
@@ -1231,6 +1269,7 @@ export default function WorstCell() {
         },
         selectedFileId || undefined,
       );
+      if (activeFileRef.current !== sourceFileId) return;
       if (!response?.success) {
         throw new Error(response?.message || "Failed to update threshold.");
       }
@@ -1254,9 +1293,10 @@ export default function WorstCell() {
         operators: { ...(cachedConfig.operators || {}) },
       });
     } catch (error) {
+      if (activeFileRef.current !== sourceFileId) return;
       setLoadError(error?.message || "Failed to update threshold.");
     } finally {
-      setUpdatingThresholdKey("");
+      if (activeFileRef.current === sourceFileId) setUpdatingThresholdKey("");
     }
   };
 
@@ -1275,6 +1315,7 @@ export default function WorstCell() {
       return;
     }
 
+    const runId = analysisRunIdRef.current;
     setUpdatingMetricKeys((prev) => ({ ...prev, [metricKey]: true }));
     setLoadError("");
 
@@ -1309,6 +1350,7 @@ export default function WorstCell() {
         thresholdContext: null,
       });
 
+      if (analysisRunIdRef.current !== runId) return;
       setAnalysisRows((prev) => {
         const nextRows = [
           ...prev.filter((row) => row.metricKey !== metricKey),
@@ -1320,9 +1362,10 @@ export default function WorstCell() {
         });
       });
     } catch (error) {
+      if (analysisRunIdRef.current !== runId) return;
       setLoadError(error?.message || "Failed to update KPI comparison.");
     } finally {
-      setUpdatingMetricKeys((prev) => {
+      if (analysisRunIdRef.current === runId) setUpdatingMetricKeys((prev) => {
         const next = { ...prev };
         delete next[metricKey];
         return next;
@@ -1432,6 +1475,7 @@ export default function WorstCell() {
 
   const runBadDaysAverageAudit = useCallback(
     async (rows, activeDateRange, sourceTag = "unknown") => {
+      if (!import.meta.env.DEV || window.localStorage.getItem("kpiDebug") !== "1") return;
       const firstRow = Array.isArray(rows) ? rows[0] : null;
       if (!firstRow?.badDays?.length) {
         badDaysDebugLog("audit_skipped_empty_rows", {
@@ -1531,6 +1575,7 @@ export default function WorstCell() {
   );
 
   const runAnalysis = async (options = {}) => {
+    if (contextLoading || thresholdLoading || !metrics.length) { setLoadError("Wait for KPI metrics and thresholds to load, then run analysis."); return; }
     const preserveNavigationFocus = options?.preserveNavigationFocus === true;
     if (!selectedFileId || !selectedDimensionKey) return;
     if (
@@ -1616,7 +1661,6 @@ export default function WorstCell() {
         );
       }
 
-      await hydrateMetricRowsCacheFromBatch(selectedFileId);
 
       const isDateRangeMode = filterMode === "date_range";
       const explicitStart = compareRanges.preStart || "";
@@ -1701,6 +1745,8 @@ export default function WorstCell() {
           });
         }
 
+        if (analysisRunIdRef.current !== runId) return;
+        await hydrateMetricRowsCacheFromBatch(selectedFileId);
         const metricsPayload = [];
         for (const metric of metrics) {
           if (analysisRunIdRef.current !== runId) return;
@@ -1742,6 +1788,7 @@ export default function WorstCell() {
               },
         );
 
+        if (analysisRunIdRef.current !== runId) return;
         setCellBadDayRows(
           Array.isArray(badDaysResult?.rows) ? badDaysResult.rows : [],
         );
@@ -1772,6 +1819,7 @@ export default function WorstCell() {
           "worker_fallback",
         );
       } else {
+        await hydrateMetricRowsCacheFromBatch(selectedFileId);
         const rowsByKpi = [];
         for (const metric of metrics) {
           if (analysisRunIdRef.current !== runId) return;
@@ -1840,6 +1888,8 @@ export default function WorstCell() {
       }
     }
   };
+
+  runAnalysisRef.current = runAnalysis;
 
   // Analysis is intentionally manual now: it runs only via the
   // "Refresh Worst Cell Analysis" button click.
@@ -1921,16 +1971,27 @@ export default function WorstCell() {
     return [{ value: "__all__", label: "All KPIs" }, ...dynamicOptions];
   }, [analysisRows]);
 
+  const matchingCellRows = useMemo(() => {
+    const query = cellHeatmapSearch.trim().toLowerCase();
+    if (!query) return cellBadDayRows;
+    return cellBadDayRows.filter(row => [row.value, row.meta?.cellId, row.meta?.shortName].some(value => String(value || "").toLowerCase().includes(query)));
+  }, [cellBadDayRows, cellHeatmapSearch]);
+  const cellsPerPage = cellBadDaysViewMode === CELL_BAD_DAYS_VIEW_OPTIONS.VISUAL ? 10 : 50;
+  const cellPageCount = Math.max(1, Math.ceil(matchingCellRows.length / cellsPerPage));
+  const currentCellPage = Math.min(cellPage, cellPageCount);
+  const visibleCellRows = useMemo(() => matchingCellRows.slice((currentCellPage - 1) * cellsPerPage, currentCellPage * cellsPerPage), [matchingCellRows, currentCellPage, cellsPerPage]);
+  useEffect(() => { setCellPage(1); }, [cellHeatmapSearch, cellBadDayRows, cellBadDaysViewMode]);
+
   const cellBadDaysHeatmapModels = useMemo(() => {
     if (
-      !isCellBadDaysView ||
+      !isCellBadDaysView || cellBadDaysViewMode !== CELL_BAD_DAYS_VIEW_OPTIONS.VISUAL ||
       !Array.isArray(cellBadDayRows) ||
       !cellBadDayRows.length
     ) {
       return [];
     }
 
-    return cellBadDayRows.map((row) => {
+    return visibleCellRows.map((row) => {
       const heatmapEntries = Array.isArray(row.heatmapEntries)
         ? row.heatmapEntries
         : [];
@@ -2106,7 +2167,7 @@ export default function WorstCell() {
         dividerAfterIndex,
       };
     });
-  }, [isCellBadDaysView, cellBadDayRows]);
+  }, [isCellBadDaysView, cellBadDayRows, cellBadDaysViewMode, visibleCellRows]);
 
   const filteredCellBadDaysHeatmapModels = useMemo(() => {
     const search = String(cellHeatmapSearch || "").trim().toLowerCase();
@@ -2427,6 +2488,7 @@ export default function WorstCell() {
           <div className="flex items-center gap-3 mb-4">
             <AlertTriangle className="w-6 h-6 text-rose-600" />
             <div>
+              <button type="button" onClick={invalidateAnalyticsCache} className="mb-2 rounded-lg border border-rose-200 px-3 py-2 text-sm font-semibold text-rose-700">Reload data</button>
               <h1 className="text-xl font-bold text-gray-800">
                 Worst Cell Analysis
               </h1>
@@ -2600,14 +2662,14 @@ export default function WorstCell() {
                 <button
                   onClick={() => void runAnalysis()}
                   disabled={
-                    loading ||
+                    loading || contextLoading || thresholdLoading || !metrics.length ||
                     !selectedFileId ||
                     !selectedDimensionKey ||
                     !isFilterReady ||
                     !isBadDaysInputReady
                   }
                   className={`px-4 py-2 rounded-lg text-sm font-semibold text-white ${
-                    loading ||
+                    loading || contextLoading || thresholdLoading || !metrics.length ||
                     !selectedFileId ||
                     !selectedDimensionKey ||
                     !isFilterReady ||
@@ -2696,14 +2758,14 @@ export default function WorstCell() {
                 <button
                   onClick={() => void runAnalysis()}
                   disabled={
-                    loading ||
+                    loading || contextLoading || thresholdLoading || !metrics.length ||
                     !selectedFileId ||
                     !selectedDimensionKey ||
                     !isFilterReady ||
                     !isBadDaysInputReady
                   }
                   className={`px-4 py-2 rounded-lg text-sm font-semibold text-white ${
-                    loading ||
+                    loading || contextLoading || thresholdLoading || !metrics.length ||
                     !selectedFileId ||
                     !selectedDimensionKey ||
                     !isFilterReady ||
@@ -2867,6 +2929,11 @@ export default function WorstCell() {
                       </div>
                     </div>
 
+                    <nav aria-label="Affected cell pages" className="mx-4 flex flex-wrap items-center justify-between gap-3 text-sm">
+                      <input type="search" aria-label="Search affected cells" value={cellHeatmapSearch} onChange={event => setCellHeatmapSearch(event.target.value)} placeholder="Search Cell ID / Short Name..." className="w-full max-w-sm rounded border px-3 py-2 text-xs" />
+                      <span>Showing cells {matchingCellRows.length ? (currentCellPage - 1) * cellsPerPage + 1 : 0}-{Math.min(currentCellPage * cellsPerPage, matchingCellRows.length)} of {matchingCellRows.length}</span>
+                      <div className="flex gap-3"><button type="button" disabled={currentCellPage === 1} onClick={() => setCellPage(currentCellPage - 1)}>Previous cells</button><span>Page {currentCellPage} of {cellPageCount}</span><button type="button" disabled={currentCellPage === cellPageCount} onClick={() => setCellPage(currentCellPage + 1)}>Next cells</button></div>
+                    </nav>
                     {cellBadDaysViewMode ===
                     CELL_BAD_DAYS_VIEW_OPTIONS.TABLE ? (
                       <div className="overflow-x-auto">
@@ -2891,7 +2958,7 @@ export default function WorstCell() {
                             </tr>
                           </thead>
                           <tbody>
-                            {cellBadDayRows.map((row) => {
+                            {visibleCellRows.map((row) => {
                               const rowKey = String(
                                 row.value || row.meta?.cellId || "",
                               );
@@ -3085,16 +3152,10 @@ export default function WorstCell() {
                     ) : (
                       <div className="space-y-4 px-4 pb-4">
                         <div className="flex flex-wrap items-center justify-between gap-2">
-                          <input
-                            type="text"
-                            value={cellHeatmapSearch}
-                            onChange={(e) => setCellHeatmapSearch(e.target.value)}
-                            placeholder="Search Cell ID / Short Name..."
-                            className="w-full max-w-sm border border-gray-200 rounded-md px-3 py-2 text-xs bg-white"
-                          />
+
                           <p className="text-xs text-gray-500">
                             Showing {filteredCellBadDaysHeatmapModels.length} of{" "}
-                            {cellBadDaysHeatmapModels.length} heatmaps
+                            {matchingCellRows.length} matching cells (paged heatmaps)
                           </p>
                         </div>
                         {filteredCellBadDaysHeatmapModels.map((model) => {
@@ -3674,7 +3735,7 @@ export default function WorstCell() {
                                     : `No failed ${selectedDimensionKey || "dimension"} values`}
                                 </span>
                               )}
-                              {row.failedDimensions.map((dimension) => (
+                              {row.failedDimensions.slice((dimensionPageFor(row) - 1) * 50, dimensionPageFor(row) * 50).map((dimension) => (
                                 <span
                                   key={`${row.metricKey}-${dimension.value}`}
                                   className="inline-flex items-center gap-2 px-2 py-1 rounded-md bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold"
@@ -3688,6 +3749,11 @@ export default function WorstCell() {
                                 </span>
                               ))}
                             </div>
+                            {row.failedDimensions.length > 50 && <nav aria-label={`${row.metricLabel} failed values`} className="mt-3 flex flex-wrap gap-3 text-xs">
+                              <button type="button" disabled={dimensionPageFor(row) === 1} onClick={() => setDimensionPages(previous => ({ ...previous, [row.metricKey]: dimensionPageFor(row) - 1 }))}>Previous failed values</button>
+                              <span>{dimensionPageFor(row)} / {Math.ceil(row.failedDimensions.length / 50)} ({row.failedDimensions.length} failed values)</span>
+                              <button type="button" disabled={dimensionPageFor(row) === Math.ceil(row.failedDimensions.length / 50)} onClick={() => setDimensionPages(previous => ({ ...previous, [row.metricKey]: dimensionPageFor(row) + 1 }))}>Next failed values</button>
+                            </nav>}
                           </td>
                           <td className="px-4 py-3">
                             <span

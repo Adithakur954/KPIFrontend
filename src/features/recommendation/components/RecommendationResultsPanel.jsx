@@ -164,6 +164,7 @@ export default function RecommendationResultsPanel({
   const [showHeatScores, setShowHeatScores] = useState(false);
   const [showRecommendations, setShowRecommendations] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
+  const [detailPage, setDetailPage] = useState(1);
   const visualizationRef = useRef(null);
   const isPrePostMode = result?.period_mode === "pre_post";
   const preFilterMeta = result?.period_filters?.pre || null;
@@ -259,7 +260,7 @@ export default function RecommendationResultsPanel({
     );
   }, [result, resultScope, scopedShortNameSet]);
 
-  const displayedAnomalyDetails = useMemo(() => {
+  const sortedAnomalyDetails = useMemo(() => {
     const rows = Array.isArray(filteredAnomalyDetails)
       ? [...filteredAnomalyDetails]
       : [];
@@ -280,11 +281,15 @@ export default function RecommendationResultsPanel({
         (Number.isFinite(sa) ? sa : -Infinity)
       );
     });
-    if (isPrePostMode) {
-      return rows;
-    }
-    return rows.slice(0, 100);
-  }, [filteredAnomalyDetails, isPrePostMode]);
+    return rows;
+  }, [filteredAnomalyDetails]);
+
+  const detailPageSize = 50;
+  const detailPageCount = Math.max(1, Math.ceil(sortedAnomalyDetails.length / detailPageSize));
+  const currentDetailPage = Math.min(detailPage, detailPageCount);
+  const detailOffset = (currentDetailPage - 1) * detailPageSize;
+  const displayedAnomalyDetails = sortedAnomalyDetails.slice(detailOffset, detailOffset + detailPageSize);
+  useEffect(() => { setDetailPage(1); }, [filteredAnomalyDetails]);
 
   const criticalCauseMeta = useMemo(() => {
     const counts = new Map();
@@ -893,7 +898,16 @@ export default function RecommendationResultsPanel({
       ) : null}
 
       {resultView === "table" ? (
-        <div className="mt-3 overflow-auto rounded-lg border border-zinc-200">
+        <div className="mt-3 rounded-lg border border-zinc-200">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 px-3 py-3 text-sm">
+            <p role="status" aria-live="polite">Showing {sortedAnomalyDetails.length ? detailOffset + 1 : 0}-{Math.min(detailOffset + detailPageSize, sortedAnomalyDetails.length)} of {sortedAnomalyDetails.length} returned rows</p>
+            <div className="flex items-center gap-3">
+              <button type="button" disabled={currentDetailPage === 1} onClick={() => setDetailPage(currentDetailPage - 1)} className="rounded border px-3 py-1 disabled:opacity-40">Previous rows</button>
+              <span>Page {currentDetailPage} of {detailPageCount}</span>
+              <button type="button" disabled={currentDetailPage === detailPageCount} onClick={() => setDetailPage(currentDetailPage + 1)} className="rounded border px-3 py-1 disabled:opacity-40">Next rows</button>
+            </div>
+          </div>
+          <div className="overflow-auto">
           <table className="w-full text-sm">
             <thead className="bg-zinc-50">
               <tr className="text-left">
@@ -952,6 +966,7 @@ export default function RecommendationResultsPanel({
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       ) : (
         <div ref={visualizationRef} className="mt-4 space-y-6">

@@ -1,4 +1,5 @@
-import React, { useContext, useEffect, useMemo, useRef, useState } from "react";
+import React, { lazy, Suspense, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { asyncWait } from "@/shared/api/asyncWait";
 import { fetchDynamicKpiColumns, fetchKpiUploadHistory } from "@/features/kpi/services/kpiService";
 import {
   downloadRecommendationExport,
@@ -9,7 +10,7 @@ import {
   startRecommendationJob,
 } from "@/features/recommendation/services/recommendationService";
 import RecommendationConfigPanel from "@/features/recommendation/components/RecommendationConfigPanel";
-import RecommendationResultsPanel from "@/features/recommendation/components/RecommendationResultsPanel";
+const RecommendationResultsPanel = lazy(() => import("@/features/recommendation/components/RecommendationResultsPanel"));
 import {
   ANOMALY_DEFAULTS,
   BASE_DEFAULT_MAPPING,
@@ -21,11 +22,16 @@ import {
   suggestKpiMapping,
 } from "@/features/recommendation/utils/recommendationUtils";
 import UserContext from "@/shared/context/FileSelectionContext";
+import { useAuth } from "@/shared/context/AuthContext";
 const RECOMMENDATION_PAGE_STATE_KEY = "recommendationPageState:v1";
 
 export default function RecommendationPage() {
   const hasHydratedRef = useRef(false);
+  const exportControllerRef = useRef(null);
+  const runControllerRef = useRef(null);
+  const persistStateRef = useRef(null);
   const { selectedFileId, setSelectedFileId } = useContext(UserContext);
+  const { user } = useAuth();
   const [files, setFiles] = useState([]);
   const [columns, setColumns] = useState([]);
   const [vendor, setVendor] = useState("nokia");
@@ -49,6 +55,7 @@ export default function RecommendationPage() {
   const [error, setError] = useState("");
   const [jobMessage, setJobMessage] = useState("");
   const [result, setResult] = useState(null);
+  const [resultScopeKey, setResultScopeKey] = useState("");
   const [resultView, setResultView] = useState("table");
   const [resultScope, setResultScope] = useState("top10");
   const sharedSelectedFileId = String(selectedFileId || "");
@@ -76,7 +83,9 @@ export default function RecommendationPage() {
       setRcaThresholds({ ...RCA_DEFAULTS, ...(saved.rcaThresholds || {}) });
       setSeverityThresholds({ ...SEVERITY_DEFAULTS, ...(saved.severityThresholds || {}) });
       setAnomalyThresholds({ ...ANOMALY_DEFAULTS, ...(saved.anomalyThresholds || {}) });
-      setResult(saved.result || null);
+      // Unscoped legacy results cannot safely be attributed to the selected dataset.
+      setResult(saved.resultScopeKey ? saved.result || null : null);
+      setResultScopeKey(saved.resultScopeKey || "");
       setResultView(saved.resultView || "table");
       setResultScope(saved.resultScope || "top10");
       setSelectedPreset(saved.selectedPreset || "");
@@ -88,33 +97,39 @@ export default function RecommendationPage() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    try {
-      window.localStorage.setItem(
-        RECOMMENDATION_PAGE_STATE_KEY,
-        JSON.stringify({
-          vendor,
-          baseMapping,
-          kpiState,
-          dateMode,
-          startDate,
-          endDate,
-          preStartDate,
-          preEndDate,
-          postStartDate,
-          postEndDate,
-          rcaThresholds,
-          severityThresholds,
-          anomalyThresholds,
-          result,
-          resultView,
-          resultScope,
-          selectedPreset,
-          presetName,
-        }),
-      );
-    } catch {
-      // ignore storage full / serialization failures
-    }
+    const persist = () => {
+      try {
+        window.localStorage.setItem(
+          RECOMMENDATION_PAGE_STATE_KEY,
+          JSON.stringify({
+            vendor,
+            baseMapping,
+            kpiState,
+            dateMode,
+            startDate,
+            endDate,
+            preStartDate,
+            preEndDate,
+            postStartDate,
+            postEndDate,
+            rcaThresholds,
+            severityThresholds,
+            anomalyThresholds,
+            result,
+            resultScopeKey,
+            resultView,
+            resultScope,
+            selectedPreset,
+            presetName,
+          }),
+        );
+      } catch {
+        // ignore storage full / serialization failures
+      }
+    };
+    persistStateRef.current = persist;
+    const timer = window.setTimeout(persist, 500);
+    return () => window.clearTimeout(timer);
   }, [
     vendor,
     baseMapping,
@@ -130,11 +145,18 @@ export default function RecommendationPage() {
     severityThresholds,
     anomalyThresholds,
     result,
+    resultScopeKey,
     resultView,
     resultScope,
     selectedPreset,
     presetName,
   ]);
+
+  useEffect(() => {
+    const flush = () => persistStateRef.current?.();
+    window.addEventListener("pagehide", flush);
+    return () => { window.removeEventListener("pagehide", flush); flush(); };
+  }, []);
 
   const rcaGroupedThresholds = useMemo(
     () => groupRcaThresholdKeys(Object.keys(RCA_DEFAULTS)),
@@ -142,8 +164,10 @@ export default function RecommendationPage() {
   );
 
   useEffect(() => {
+    let active = true;
     const loadFiles = async () => {
       const response = await fetchKpiUploadHistory();
+      if (!active) return;
       const fileRows = response?.success ? response.data || [] : [];
       setFiles(fileRows);
       if (fileRows.length) {
@@ -151,20 +175,24 @@ export default function RecommendationPage() {
       }
     };
     loadFiles();
-  }, []);
+    return () => { active = false; };
+  }, [setSelectedFileId]);
 
   useEffect(() => {
+    let active = true;
     const loadColumns = async () => {
       if (!sharedSelectedFileId) {
         setColumns([]);
         return;
       }
       const data = await fetchDynamicKpiColumns(sharedSelectedFileId);
+      if (!active) return;
       const nextColumns = Array.isArray(data?.columns) ? data.columns : [];
       setColumns(nextColumns);
       setKpiState((prev) => suggestKpiMapping(vendor, nextColumns, prev, true));
     };
     loadColumns();
+    return () => { active = false; };
   }, [sharedSelectedFileId, vendor]);
 
   useEffect(() => {
@@ -237,6 +265,16 @@ export default function RecommendationPage() {
     anomalyThresholds,
   ]);
 
+  const currentScopeKey = useMemo(
+    () => JSON.stringify([user?.id, user?.companyId, sharedSelectedFileId, payload]),
+    [user?.id, user?.companyId, sharedSelectedFileId, payload],
+  );
+
+  useEffect(() => () => {
+    runControllerRef.current?.abort();
+    exportControllerRef.current?.abort();
+  }, [currentScopeKey]);
+
   const validateDateInputs = () => {
     if (dateMode === "pre_post") {
       if (!preStartDate || !preEndDate || !postStartDate || !postEndDate) {
@@ -263,8 +301,11 @@ export default function RecommendationPage() {
     setError("");
     setJobMessage("");
     setLoading(true);
+    const controller = new AbortController();
+    runControllerRef.current = controller;
     try {
-      const started = await startRecommendationJob(sharedSelectedFileId, payload);
+      const started = await startRecommendationJob(sharedSelectedFileId, payload, { signal: controller.signal });
+      if (controller.signal.aborted) return;
       const firstJob = started?.data;
       if (!firstJob?.jobId) {
         throw new Error(started?.message || "Recommendation job did not start.");
@@ -275,6 +316,7 @@ export default function RecommendationPage() {
       for (let attempt = 0; attempt < 240; attempt += 1) {
         if (currentJob.status === "COMPLETED") {
           setResult(currentJob.result || null);
+          setResultScopeKey(currentScopeKey);
           setJobMessage("Recommendation complete.");
           return;
         }
@@ -282,8 +324,9 @@ export default function RecommendationPage() {
           throw new Error(currentJob?.result?.message || currentJob.message || "Recommendation failed.");
         }
 
-        await new Promise((resolve) => setTimeout(resolve, 1500));
-        const next = await fetchRecommendationJob(firstJob.jobId);
+        await asyncWait(1500, controller.signal);
+        const next = await fetchRecommendationJob(firstJob.jobId, { signal: controller.signal });
+        if (controller.signal.aborted) return;
         currentJob = next?.data || currentJob;
         setJobMessage(
           `${currentJob.message || "Recommendation processing..."} ${currentJob.progressPercent || 0}%`,
@@ -291,6 +334,7 @@ export default function RecommendationPage() {
       }
       throw new Error("Recommendation is still processing. Please try again in a few moments.");
     } catch (err) {
+      if (controller.signal.aborted) return;
       setError(err?.message || "Failed to run recommendation.");
     } finally {
       setLoading(false);
@@ -306,16 +350,24 @@ export default function RecommendationPage() {
     }
     setError("");
     setExporting(true);
+    setJobMessage("Checking saved RCA analysis for export...");
+    const controller = new AbortController(); exportControllerRef.current = controller;
     try {
-      const { blob, fileName } = await downloadRecommendationExport(sharedSelectedFileId, payload);
+      const { blob, fileName } = await downloadRecommendationExport(sharedSelectedFileId, payload, {
+        signal: controller.signal,
+        onProgress: job => setJobMessage(`Export #${job.id}: ${job.message || job.status} (${job.progressPercent || 0}%)`),
+      });
+      if (controller.signal.aborted) return;
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
       anchor.download = fileName;
       anchor.click();
-      URL.revokeObjectURL(url);
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setJobMessage("Export downloaded. The workbook will be reused for unchanged data and settings.");
     } catch (err) {
-      setError(err?.message || "Failed to export recommendation.");
+      if (err?.name === "AbortError") setJobMessage("Export continues on the server. Use Export with the same settings to resume.");
+      else setError(err?.message || "Failed to export recommendation.");
     } finally {
       setExporting(false);
     }
@@ -427,7 +479,7 @@ export default function RecommendationPage() {
           jobMessage={jobMessage}
         />
 
-        <RecommendationResultsPanel
+        {result && resultScopeKey === currentScopeKey && <Suspense fallback={<p role="status" className="p-6 text-slate-600">Loading analysis results...</p>}><RecommendationResultsPanel
           result={result}
           resultView={resultView}
           setResultView={setResultView}
@@ -437,7 +489,7 @@ export default function RecommendationPage() {
           selectedFileLabel={selectedFileLabel}
           currentConfig={payload}
           availableColumns={columns}
-        />
+        /></Suspense>}
       </div>
     </div>
   );

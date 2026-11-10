@@ -68,8 +68,9 @@ export default function RecommendationConfigPanel({
         <div className="p-6 space-y-8">
           <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
             <div className="space-y-1.5">
-              <label className="text-[13px] font-semibold text-zinc-700">Source File</label>
+              <label htmlFor="rca-source-file" className="text-[13px] font-semibold text-zinc-700">Source File</label>
               <select
+                id="rca-source-file"
                 value={selectedFileId}
                 onChange={(e) => setSelectedFileId(e.target.value)}
                 className="w-full rounded-xl border border-zinc-200 bg-zinc-50/50 px-3 py-2.5 text-sm focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-4 focus:ring-indigo-500/5 transition-all"
@@ -84,8 +85,9 @@ export default function RecommendationConfigPanel({
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-[13px] font-semibold text-zinc-700">Vendor Hardware</label>
+              <label htmlFor="rca-vendor" className="text-[13px] font-semibold text-zinc-700">Vendor Hardware</label>
               <select
+                id="rca-vendor"
                 value={vendor}
                 onChange={(e) => setVendor(e.target.value)}
                 className="w-full rounded-xl border border-zinc-200 bg-zinc-50/50 px-3 py-2.5 text-sm focus:border-indigo-500 focus:bg-white focus:outline-none transition-all"
@@ -465,19 +467,19 @@ export default function RecommendationConfigPanel({
         </details>
 
         <div className="flex flex-col items-center justify-between gap-4 border-t border-zinc-100 bg-white p-6 sm:flex-row">
-          <div className="flex items-center gap-3">
+          <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
             <button
               onClick={handleRun}
-              disabled={loading || !selectedFileId}
-              className="flex h-11 items-center gap-2 rounded-xl bg-zinc-900 px-6 text-sm font-bold text-white shadow-lg shadow-zinc-200 transition-all hover:bg-zinc-800 active:scale-95 disabled:opacity-30"
+              disabled={loading || exporting || !selectedFileId}
+              className="flex h-11 items-center justify-center gap-2 rounded-xl bg-zinc-900 px-6 text-sm font-bold text-white shadow-lg shadow-zinc-200 transition-all hover:bg-zinc-800 active:scale-95 disabled:opacity-30"
             >
               {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4 fill-current" />}
               Run Recommendation
             </button>
             <button
               onClick={handleExport}
-              disabled={exporting || !selectedFileId}
-              className="flex h-11 items-center gap-2 rounded-xl border border-zinc-200 bg-white px-5 text-sm font-bold text-zinc-700 hover:bg-zinc-50 active:scale-95 disabled:opacity-40"
+              disabled={exporting || loading || !selectedFileId}
+              className="flex h-11 items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-white px-5 text-sm font-bold text-zinc-700 hover:bg-zinc-50 active:scale-95 disabled:opacity-40"
             >
               {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
               Export
@@ -501,7 +503,7 @@ export default function RecommendationConfigPanel({
             </div>
           </div>
         </div>
-        {jobMessage ? <div className="mx-6 mb-3 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700">{jobMessage}</div> : null}
+        {jobMessage ? <div role="status" aria-live="polite" className="mx-6 mb-3 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700">{jobMessage}</div> : null}
         {error ? <div className="mx-6 mb-6 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{error}</div> : null}
       </section>
     </>
