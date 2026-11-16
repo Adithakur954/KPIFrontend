@@ -13,6 +13,7 @@ export const portalNavigation = [
     { to: "/kpi", label: "KPI Analytics", description: "Charts, trends, filters and Excel exports", icon: BarChart3 },
     { to: "/map", label: "Coverage Map", description: "Sites, cells, coverage and spatial analysis", icon: Map },
     { to: "/alarms", label: "Alarms", description: "Review and manage network alarms", icon: Bell, roles: adminRoles },
+    { to: "/alarm-operations", label: "Alarm Operations", description: "Native OSS imports, evidence, customer catalogue and delivery", icon: FileCheck },
   ] },
   { label: "Analysis", items: [
     { to: "/worstcell", label: "Worst Cell Analysis", description: "Find persistent failures and compare periods", icon: AlertTriangle, roles: adminRoles },

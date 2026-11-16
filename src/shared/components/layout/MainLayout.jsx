@@ -35,7 +35,7 @@ export default function MainLayout({ children }) {
     navigate("/login", { replace: true });
   };
   return (
-    <div className="portal-shell min-h-screen" data-map-page={pathname === "/map"}>
+    <div className="portal-shell min-h-screen" data-map-page={pathname === "/map"} data-sidebar-collapsed={isCollapsed}>
       <a href="#main-content" className="portal-skip-link">Skip to content</a>
       <Sidebar user={user} onLogout={handleLogout} loading={loading} isCollapsed={isCollapsed} setIsCollapsed={toggleSidebar} onOpenSearch={() => setSearchOpen(true)} />
       {searchOpen && <QuickNavigation role={user?.role} onClose={() => setSearchOpen(false)} />}
