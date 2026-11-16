@@ -1,3 +1,4 @@
+import PageHeading from "@/shared/components/common/PageHeading";
 import { BoundedAnalyticsCache, analyticsCacheScope, invalidateAnalyticsCache, ANALYTICS_CACHE_TTL_MS } from "@/shared/api/analyticsCache";
 import useAnalyticsRefresh from "@/shared/hooks/useAnalyticsRefresh";
 import React, {
@@ -2482,22 +2483,10 @@ export default function WorstCell() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-rose-50 to-amber-50 p-6">
+    <div className="min-h-screen bg-slate-50 p-4 md:p-6">
       <div className="max-w-[1600px] mx-auto space-y-6">
-        <div className="bg-white rounded-2xl border border-rose-100 shadow-lg p-5">
-          <div className="flex items-center gap-3 mb-4">
-            <AlertTriangle className="w-6 h-6 text-rose-600" />
-            <div>
-              <button type="button" onClick={invalidateAnalyticsCache} className="mb-2 rounded-lg border border-rose-200 px-3 py-2 text-sm font-semibold text-rose-700">Reload data</button>
-              <h1 className="text-xl font-bold text-gray-800">
-                Worst Cell Analysis
-              </h1>
-              <p className="text-sm text-gray-500">
-                File-wise KPI failure matrix using page-level pre/post
-                operators.
-              </p>
-            </div>
-          </div>
+        <div className="bg-white rounded-xl border border-slate-200 p-5">
+          <PageHeading title="Worst Cell Analysis" eyebrow="Analysis / Cell performance" description="Find persistent KPI failures and compare performance across date ranges." icon={AlertTriangle} className="portal-heading-inline mb-5" actions={<button type="button" onClick={invalidateAnalyticsCache} className="portal-button">Reload data</button>} />
 
           <div className="flex items-center justify-end mb-4">
             <div className="inline-flex rounded-lg border border-gray-200 p-1 bg-gray-50">
@@ -2506,7 +2495,7 @@ export default function WorstCell() {
                 onClick={() => setFilterMode("date_range")}
                 className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
                   filterMode === "date_range"
-                    ? "bg-rose-500 text-white"
+                    ? "bg-blue-600 text-white"
                     : "text-gray-700 hover:bg-white"
                 }`}
               >
@@ -2519,7 +2508,7 @@ export default function WorstCell() {
                 }}
                 className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
                   filterMode === "pre_post"
-                    ? "bg-amber-500 text-white"
+                    ? "bg-blue-600 text-white"
                     : "text-gray-700 hover:bg-white"
                 }`}
               >

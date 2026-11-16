@@ -1,7 +1,9 @@
 @import "tailwindcss";
 
 body {
-  font-family: "Stack Sans Notch", sans-serif, "Roboto Mono";
+  font-family: Inter, "Segoe UI", system-ui, sans-serif;
+  color: #172b4d;
+  background: #f5f7fa;
 }
 
 body.kpi-pdf-exporting [data-kpi-pdf-card="true"] {

@@ -1,3 +1,5 @@
+import PageHeading from "@/shared/components/common/PageHeading";
+import PageState from "@/shared/components/common/PageState";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { FileBarChart, RefreshCw, Download, ChevronLeft, ChevronRight } from "lucide-react";
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
@@ -13,8 +15,8 @@ function Status({ value }) {
   const tone = ["COMPLETED", "READY", "CAPTURED", "IMPROVED"].includes(value) ? "bg-emerald-50 text-emerald-800" : ["FAILED", "UNKNOWN", "DEGRADED"].includes(value) ? "bg-rose-50 text-rose-800" : ["PARTIAL", "LIMITED", "SKIPPED", "HISTORICAL"].includes(value) ? "bg-amber-50 text-amber-800" : "bg-slate-100 text-slate-700";
   return <span className={`inline-block rounded-full px-2.5 py-1 text-xs font-semibold ${tone}`}>{String(value || "Unknown").replaceAll("_", " ")}</span>;
 }
-function Empty({ children }) { return <p className="p-6 text-sm text-slate-500">{children}</p>; }
-function Table({ headings, children }) { return <div className="overflow-x-auto"><p className="px-4 py-2 text-xs text-slate-500 md:hidden">Swipe horizontally to see all columns.</p><table className="w-full text-left text-sm"><thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr>{headings.map(heading => <th key={heading} className="whitespace-nowrap px-4 py-3">{heading}</th>)}</tr></thead><tbody className="divide-y divide-slate-100 [&_td]:px-4 [&_td]:py-3">{children}</tbody></table></div>; }
+function Empty({ children }) { return <PageState title={children} />; }
+function Table({ headings, children }) { return <div className="portal-table-scroll" role="region" aria-label="Report history table" tabIndex={0}><p className="px-4 py-2 text-xs text-slate-500 md:hidden">Swipe horizontally to see all columns.</p><table className="w-full text-left text-sm"><thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr>{headings.map(heading => <th key={heading} className="whitespace-nowrap px-4 py-3">{heading}</th>)}</tr></thead><tbody className="divide-y divide-slate-100 [&_td]:px-4 [&_td]:py-3">{children}</tbody></table></div>; }
 
 export default function ReportsPage() {
   const { user } = useAuth();
@@ -30,7 +32,7 @@ export default function ReportsPage() {
     return () => controller.abort();
   }, [datasetPage]);
   return <div className="space-y-6 p-4 md:p-6">
-    <header className="pt-14 lg:pt-0"><div className="flex items-center gap-3"><FileBarChart className="text-blue-700" size={28} /><h1 className="text-2xl font-bold text-slate-900">Daily reports</h1></div><p className="mt-2 text-sm text-slate-600">Compare daily performance, download reports and track email submissions.</p></header>
+    <PageHeading title="Daily reports" eyebrow="Analysis / Daily reporting" description="Compare daily performance, download reports and track email submissions." icon={FileBarChart} className="portal-heading-inline" />
     {error && <p role="alert" className="rounded-xl bg-rose-50 p-4 text-sm text-rose-800">{error}</p>}
     <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white p-4"><label htmlFor="report-dataset" className="text-sm font-medium">KPI dataset</label><select id="report-dataset" className={`${field} max-w-full min-w-56`} value={selected?.id || ""} onChange={event => setSelected(datasets.items.find(item => String(item.id) === event.target.value) || null)}><option value="">Select a dataset</option>{selected && !datasets.items.some(item => item.id === selected.id) && <option value={selected.id}>{selected.fileName} (#{selected.id})</option>}{datasets.items.map(item => <option key={item.id} value={item.id}>{item.fileName || "KPI upload"} (#{item.id})</option>)}</select><div className="ml-auto flex items-center gap-2 text-sm text-slate-500"><button className={button} aria-label="Previous datasets" disabled={datasetPage === 1} onClick={() => setDatasetPage(value => value - 1)}><ChevronLeft size={16} /></button><span>Page {datasetPage} · {datasets.total} datasets</span><button className={button} aria-label="Next datasets" disabled={datasetPage * 50 >= datasets.total} onClick={() => setDatasetPage(value => value + 1)}><ChevronRight size={16} /></button></div></div>
     {selected ? <Workspace key={selected.id} fileId={selected.id} isAdmin={isAdmin} /> : <div className="rounded-xl border border-dashed border-slate-300 bg-white p-12 text-center text-slate-500">Select a KPI dataset to view its analysis, reports and delivery history.</div>}

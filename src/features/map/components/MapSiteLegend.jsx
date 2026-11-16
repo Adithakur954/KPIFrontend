@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, Hash, Radio } from "lucide-react";
+import { ChevronDown, Hash, Radio, Search } from "lucide-react";
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 const initialLegendWidth = 250;
@@ -15,6 +15,12 @@ export default function MapSiteLegend({
   getColorBySector,
 }) {
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const [visibleLimit, setVisibleLimit] = useState(100);
+  const matchingSites = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    return term ? sites.filter(site => `${site.Site_Name || ""} ${site.SITEID || ""}`.toLowerCase().includes(term)) : sites;
+  }, [sites, search]);
   const [position, setPosition] = useState({ x: legendMargin, y: legendMargin });
   const [size, setSize] = useState({ width: initialLegendWidth, height: 360 });
   const legendRef = useRef(null);
@@ -119,45 +125,55 @@ export default function MapSiteLegend({
   return (
     <div
       ref={legendRef}
-      className="absolute z-10 max-w-[calc(100vw-1rem)]"
+      className="map-site-legend absolute z-10 max-w-[calc(100vw-1rem)]"
       style={{
         left: position.x,
         top: position.y,
         width: size.width,
       }}
     >
-      <div className="relative overflow-hidden rounded-[22px] border border-slate-800/80 bg-slate-950/90 text-slate-100 shadow-2xl backdrop-blur-xl ring-1 ring-white/10">
-        <div className="flex w-full items-center justify-between gap-3 border-b border-slate-800/80 px-4 py-3 transition hover:bg-slate-900/60">
+      <div className="map-legend-surface">
+        <div className="map-legend-header">
           <div
             role="button"
             tabIndex={0}
             onPointerDown={(event) => startPointerTracking(event, "drag")}
+            aria-label="Move site legend with arrow keys"
+            onKeyDown={event => {
+              const offset = { ArrowLeft: [-10, 0], ArrowRight: [10, 0], ArrowUp: [0, -10], ArrowDown: [0, 10] }[event.key];
+              if (!offset) return;
+              event.preventDefault();
+              const next = clampToViewport({ x: positionRef.current.x + offset[0], y: positionRef.current.y + offset[1] }, sizeRef.current);
+              applyPosition(next.position);
+            }}
             className="flex min-w-0 flex-1 cursor-move items-center gap-3"
             title="Drag to move legend"
           >
-            <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-600/90 text-white shadow-md shadow-blue-500/20">
+            <span className="map-legend-brand">
               <Radio className="h-4 w-4" />
             </span>
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <span className="text-sm font-black text-white">Site Legend</span>
-                <span className="rounded-full border border-blue-500/40 bg-blue-500/10 px-2 py-0.5 text-xs font-black text-blue-400">
+                <span className="text-sm font-semibold text-slate-900">Site Legend</span>
+                <span className="rounded-full border border-blue-500/40 bg-blue-500/10 px-2 py-0.5 text-xs font-semibold text-blue-400">
                   {sites.length}
                 </span>
               </div>
-              <div className="truncate text-xs text-slate-400">
+              <div className="truncate text-xs text-slate-500">
                 {open
                   ? "Click a site to highlight it on the map"
                   : activeSite
                     ? `Selected: ${activeSite.Site_Name || activeSite.SITEID}`
-                    : "Open dropdown to choose a site"}
+                    : "Find and select a site"}
               </div>
             </div>
           </div>
           <button
             type="button"
             onClick={() => setOpen((value) => !value)}
-            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-800 bg-slate-900/80 text-slate-400 hover:border-slate-700 hover:text-white"
+            aria-expanded={open}
+            aria-label={open ? "Collapse legend" : "Expand legend"}
+            className="map-legend-toggle"
             title={open ? "Collapse legend" : "Expand legend"}
           >
             <ChevronDown className={`h-5 w-5 transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
@@ -168,27 +184,28 @@ export default function MapSiteLegend({
           <button
             type="button"
             onClick={() => onSiteClick(activeSite)}
-            className="flex w-full items-center justify-between gap-3 border-b border-slate-800/40 bg-blue-950/20 px-4 py-3 text-left hover:bg-blue-900/30"
+            className="map-legend-active"
           >
             <div className="min-w-0">
-              <div className="truncate text-sm font-black text-white">{activeSite.Site_Name}</div>
-              <div className="mt-0.5 flex items-center gap-1 text-xs text-slate-400">
+              <div className="truncate text-sm font-semibold text-slate-900">{activeSite.Site_Name}</div>
+              <div className="mt-0.5 flex items-center gap-1 text-xs text-slate-500">
                 <Hash className="h-3 w-3 shrink-0 text-blue-400" />
                 <span className="truncate">{activeSite.SITEID}</span>
               </div>
             </div>
-            <span className="rounded-full border border-blue-500/40 bg-blue-600 px-2.5 py-1 text-xs font-black text-white shadow-sm">
+            <span className="rounded-full border border-blue-500/40 bg-blue-600 px-2.5 py-1 text-xs font-semibold text-slate-900 shadow-sm">
               Active
             </span>
           </button>
         )}
 
+        {open && <div className="map-site-search"><Search size={15} /><input aria-label="Search map sites" placeholder="Search site name or ID" value={search} onChange={event => { setSearch(event.target.value); setVisibleLimit(100); }} />{search && <button type="button" aria-label="Clear site search" onClick={() => { setSearch(""); setVisibleLimit(100); }}>Clear</button>}</div>}
         {open && (
         <div className="overflow-y-auto p-2.5 space-y-2" style={{ maxHeight: size.height }}>
-          {sites.length === 0 ? (
-            <p className="px-3 py-4 text-sm text-slate-400">No plotted sites found.</p>
+          {matchingSites.length === 0 ? (
+            <p role="status" className="px-3 py-4 text-sm text-slate-500">{sites.length ? "No matching sites. Try another name or ID." : "No plotted sites found."}</p>
           ) : (
-            sites.map((site) => {
+            matchingSites.slice(0, visibleLimit).map((site) => {
               const cells = Array.isArray(site.cells) ? site.cells : [];
               const cellsBySector = cells.reduce((acc, cell) => {
                 const sector = String(cell.Sector || cell.SEC || cell.Sector_ID || cell.Cell_Name?.split("_").pop() || "A").slice(-1).toUpperCase();
@@ -203,20 +220,16 @@ export default function MapSiteLegend({
                 <button
                   key={site.SITEID}
                   type="button"
+                  aria-pressed={selected}
                   onClick={() => onSiteClick(site)}
                   onMouseEnter={() => onSiteHover(site.SITEID)}
                   onMouseLeave={onSiteLeave}
-                  className={`flex w-full items-center gap-3 rounded-xl border p-2.5 text-left transition-all ${
-                    selected
-                      ? "border-blue-500/80 bg-blue-950/50 shadow-md shadow-blue-500/10"
-                      : hovered
-                        ? "border-slate-700 bg-slate-900/90 shadow-sm"
-                        : "border-slate-800/80 bg-slate-900/50 hover:border-slate-700 hover:bg-slate-900/80"
-                  }`}
+                  className={`map-legend-row ${selected ? "is-selected" : hovered ? "is-hovered" : ""}`}
+
                 >
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-bold text-white">{site.Site_Name}</div>
-                    <div className="mt-0.5 flex items-center gap-1 text-xs text-slate-400">
+                    <div className="truncate text-sm font-bold text-slate-900">{site.Site_Name}</div>
+                    <div className="mt-0.5 flex items-center gap-1 text-xs text-slate-500">
                       <Hash className="h-3 w-3 shrink-0 text-slate-500" />
                       <span className="truncate">{site.SITEID}</span>
                     </div>
@@ -227,7 +240,7 @@ export default function MapSiteLegend({
                       return (
                         <span
                           key={sector}
-                          className="inline-flex shrink-0 items-center justify-center rounded-full px-2 py-0.5 text-[10px] font-black text-white shadow-sm"
+                          className="map-legend-sector"
                           style={{ backgroundColor: colors.fill }}
                           title={`Sector ${sector}: ${cellsBySector[sector]} cell(s)`}
                         >
@@ -242,10 +255,11 @@ export default function MapSiteLegend({
           )}
         </div>
         )}
+        {open && <div className="map-legend-footer"><span role="status">Showing {Math.min(visibleLimit, matchingSites.length)} of {matchingSites.length} sites</span>{matchingSites.length > visibleLimit && <button type="button" onClick={() => setVisibleLimit(limit => limit + 100)}>Show more sites</button>}</div>}
         <button
           type="button"
           onPointerDown={(event) => startPointerTracking(event, "resize")}
-          className="absolute bottom-1 right-1 h-5 w-5 cursor-nwse-resize rounded-br-[18px] rounded-tl-lg border-b-2 border-r-2 border-slate-600 bg-slate-900/90 hover:bg-blue-600/40"
+          className="map-legend-resize"
           title="Resize legend"
           aria-label="Resize site legend"
         />

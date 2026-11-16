@@ -1,3 +1,5 @@
+import MapSummaryCards from "@/features/map/components/MapSummaryCards";
+import "@/styles/map-workspace.css";
 import React, { useCallback, useEffect, useState, useMemo, useRef } from "react";
 import { GoogleMap, useJsApiLoader } from "@react-google-maps/api";
 import { EMPTY_MAP_ROWS, validCoordinates, createNearbySiteIndex } from "@/features/map/utils/mapData";
@@ -1219,7 +1221,7 @@ export default function MapPage() {
   const [selectedSite, setSelectedSite] = useState(null);
   const [selectedCell, setSelectedCell] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [drawerMode, setDrawerMode] = useState("filter");
   const [analyticsDrawerOpen, setAnalyticsDrawerOpen] = useState(false);
   const [hoveredSite, setHoveredSite] = useState(null);
@@ -1283,6 +1285,7 @@ export default function MapPage() {
   }, []);
 
   const handleOpenFilter = useCallback(() => {
+    setAnalyticsDrawerOpen(false);
     setSidebarOpen((open) => !open);
     setDrawerMode("filter");
   }, []);
@@ -1290,7 +1293,10 @@ export default function MapPage() {
   const handleOpenAnalytics = useCallback(() => {
     setAnalyticsDrawerOpen((open) => {
       const next = !open;
-      if (next) setActiveMapPanel("overview");
+      if (next) {
+        setSidebarOpen(false);
+        setActiveMapPanel("overview");
+      }
       return next;
     });
   }, []);
@@ -1581,6 +1587,7 @@ export default function MapPage() {
       setPredictions(nextPredictions);
       setPredictionSummary(summarizePredictions(nextPredictions, selectedFileId));
       setActiveMapPanel("predictions");
+      setSidebarOpen(false);
       setAnalyticsDrawerOpen(true);
       setShowPredictions(true);
       setShowCells(false);
@@ -1609,6 +1616,7 @@ export default function MapPage() {
         setPredictions(nextPredictions);
         setPredictionSummary(summarizePredictions(nextPredictions, selectedFileId));
         setActiveMapPanel("predictions");
+        setSidebarOpen(false);
         setAnalyticsDrawerOpen(true);
         setShowPredictions(true);
         setShowCells(false);
@@ -5402,12 +5410,11 @@ export default function MapPage() {
   }, [handleSiteMarkerClick, uniqueSites]);
 
   return (
-    <div className="h-screen w-full flex flex-col overflow-hidden bg-slate-950 text-slate-100">
+    <div className="map-workspace h-screen w-full flex flex-col overflow-hidden bg-slate-950 text-slate-100">
       <MapHeader
         sidebarOpen={sidebarOpen}
         drawerMode={drawerMode}
         analyticsDrawerOpen={analyticsDrawerOpen}
-        onToggleSidebar={() => setSidebarOpen((open) => !open)}
         onOpenFilter={handleOpenFilter}
         onOpenAnalytics={handleOpenAnalytics}
         siteMarkerScale={siteMarkerScale}
@@ -5423,6 +5430,23 @@ export default function MapPage() {
         onDownloadPdf={handleDownloadMapPdf}
         exportingPdf={exportingMapPdf}
         mapReady={mapReady}
+        dataReady={siteDataReady}
+        siteCount={filteredSites.length}
+        cellCount={filteredCellCount}
+        needsAttention={Boolean(loadError || rendererError || fetchError)}
+        statusLabel={loadError || rendererError || fetchError ? "Needs attention" : mapReady ? "Map ready" : !basemapReady ? "Loading basemap" : !siteDataReady ? "Loading sites" : "Preparing layers"}
+        canFitSites={Boolean(map && basemapReady && filteredSites.length)}
+        onFitSites={() => {
+          if (!map || !window.google || !filteredSites.length) return;
+          if (filteredSites.length === 1) {
+            map.panTo({ lat: filteredSites[0].lat, lng: filteredSites[0].lon });
+            map.setZoom(15);
+            return;
+          }
+          const bounds = new window.google.maps.LatLngBounds();
+          filteredSites.forEach(site => bounds.extend({ lat: site.lat, lng: site.lon }));
+          map.fitBounds(bounds, 60);
+        }}
       />
 
       <div className="relative min-h-0 flex-1 overflow-hidden" aria-busy={!basemapReady && !loadError && Boolean(googleMapsApiKey)}>
@@ -5431,62 +5455,42 @@ export default function MapPage() {
         </div>}
         {/* Sidebar */}
         <div
+          inert={!sidebarOpen}
+          role="region"
+          id="map-filter-panel"
+          aria-label="Map filters"
           className={`${sidebarOpen ? "translate-x-0" : "-translate-x-full pointer-events-none"
-            } absolute bottom-0 left-0 top-0 z-20 w-[420px] max-w-full transition-transform duration-300 ease-in-out bg-slate-950/95 backdrop-blur-xl shadow-2xl overflow-hidden flex flex-col border-r border-slate-800/80`}
+            } map-filter-drawer absolute bottom-0 left-0 z-20 h-[min(72dvh,720px)] w-full max-w-full rounded-t-2xl lg:top-0 lg:h-auto lg:w-[360px] lg:rounded-none transition-transform duration-300 ease-in-out bg-slate-950/95 backdrop-blur-xl shadow-2xl overflow-hidden flex flex-col border-r border-slate-800/80`}
         >
           {/* Sidebar Header */}
-          <div className="bg-slate-950 p-4 text-white border-b border-slate-800/80">
+          <div className="map-panel-heading bg-slate-950 p-4 text-white border-b border-slate-800/80">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 shadow-md shadow-blue-500/20">
                   <Radio className="w-5 h-5 text-white" />
                 </div>
                 <div>
-                  <h1 className="text-lg font-black tracking-tight text-white">{drawerMode === "filter" ? "Network Control & Filter" : "Network Analytics"}</h1>
+                  <h1 className="text-lg font-black tracking-tight text-white">{drawerMode === "filter" ? "Map filters" : "Network Analytics"}</h1>
                   <p className="text-slate-400 text-xs">
-                    {drawerMode === "filter" ? "Data layer configuration & spatial filters" : "KPI, prediction, alarm, and site insights"}
+                    {drawerMode === "filter" ? "Sources, layers and spatial filters" : "KPI, prediction, alarm, and site insights"}
                   </p>
                 </div>
               </div>
               <button
                 onClick={() => setSidebarOpen(false)}
                 className="p-2 hover:bg-slate-800 rounded-xl transition-colors text-slate-400 hover:text-white border border-slate-800"
+                aria-label="Close panel"
                 title="Close panel"
               >
                 <X className="w-4.5 h-4.5" />
               </button>
             </div>
 
-            {/* Stats */}
-            <div className="grid grid-cols-2 gap-2.5">
-              <div className="rounded-xl border border-slate-800/80 bg-slate-900/80 p-3 shadow-inner">
-                <div className="mb-1 flex items-center gap-1.5">
-                  <Building2 className="h-3.5 w-3.5 text-blue-400" />
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Sites</span>
-                </div>
-                <p className="text-xl font-black text-white">{siteDataReady ? filteredSites.length : "..."}</p>
-              </div>
-              <div className="rounded-xl border border-slate-800/80 bg-slate-900/80 p-3 shadow-inner">
-                <div className="mb-1 flex items-center gap-1.5">
-                  <Signal className="h-3.5 w-3.5 text-indigo-400" />
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Cells</span>
-                </div>
-                <p className="text-xl font-black text-white">{siteDataReady ? filteredCellCount : "..."}</p>
-              </div>
-              <div className="rounded-xl border border-slate-800/80 bg-slate-900/80 p-3 shadow-inner">
-                <div className="mb-1 flex items-center gap-1.5">
-                  <MapPin className="h-3.5 w-3.5 text-emerald-400" />
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Plotted</span>
-                </div>
-                <p className="text-xl font-black text-emerald-400">{mapReady ? filteredCellCount : 0}</p>
-              </div>
-              <div className="rounded-xl border border-slate-800/80 bg-slate-900/80 p-3 shadow-inner">
-                <div className="mb-1 flex items-center gap-1.5">
-                  <Activity className="h-3.5 w-3.5 text-amber-400" />
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">No Lat/Lon</span>
-                </div>
-                <p className="text-xl font-black text-amber-400">{siteDataReady ? missingCoordinateRows : "..."}</p>
-              </div>
+            <div className="map-panel-stats">
+              <div><span>Sites</span><strong>{siteDataReady ? filteredSites.length : "--"}</strong></div>
+              <div><span>Cells</span><strong>{siteDataReady ? filteredCellCount : "--"}</strong></div>
+              <div><span>Mapped cells</span><strong>{mapReady ? filteredCellCount : 0}</strong></div>
+              <div title="Rows with missing or invalid coordinates"><span>No GPS</span><strong className="map-stat-warning">{siteDataReady ? missingCoordinateRows : "--"}</strong></div>
             </div>
           </div>
 
@@ -5494,7 +5498,7 @@ export default function MapPage() {
           {drawerMode === "filter" && (
             <div
               ref={sidebarContentRef}
-              className="relative max-h-[calc(100vh-285px)] overflow-y-auto border-b border-slate-800 bg-slate-950 scroll-smooth"
+              className="map-filter-scroll relative min-h-0 flex-1 overflow-y-auto border-b border-slate-800 bg-slate-950 scroll-smooth"
             >
               <div className="sticky top-0 z-30 flex justify-end gap-2 bg-slate-950/95 px-4 py-2 backdrop-blur">
                 <button
@@ -6146,24 +6150,7 @@ export default function MapPage() {
           <div className="space-y-4">
             {activeMapPanel === "overview" && (
             <>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-2xl border border-slate-800/80 bg-slate-900/80 p-3.5 shadow-md">
-                <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Sites</div>
-                <div className="mt-1 text-2xl font-black text-white">{formatNumber(siteSummary?.siteCount || uniqueSites.length)}</div>
-              </div>
-              <div className="rounded-2xl border border-slate-800/80 bg-slate-900/80 p-3.5 shadow-md">
-                <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Cells</div>
-                <div className="mt-1 text-2xl font-black text-white">{formatNumber(siteAnalyticsTotals.cells || mapData.length)}</div>
-              </div>
-              <div className="rounded-2xl border border-slate-800/80 bg-slate-900/80 p-3.5 shadow-md">
-                <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Bands</div>
-                <div className="mt-1 text-2xl font-black text-white">{formatNumber(siteAnalyticsTotals.bands.size)}</div>
-              </div>
-              <div className="rounded-2xl border border-slate-800/80 bg-slate-900/80 p-3.5 shadow-md">
-                <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Critical</div>
-                <div className="mt-1 text-2xl font-black text-red-400">{formatNumber(statusCounts.CRITICAL)}</div>
-              </div>
-            </div>
+            <MapSummaryCards sites={siteSummary?.siteCount || uniqueSites.length} cells={siteAnalyticsTotals.cells || mapData.length} bands={siteAnalyticsTotals.bands.size} critical={statusCounts.CRITICAL || 0} />
 
             <div className="rounded-2xl border border-slate-800/80 bg-slate-900/60 p-4 shadow-lg">
               <div className="mb-3 text-xs font-black uppercase tracking-wider text-slate-300">Map Analytics Overview</div>
@@ -6171,13 +6158,13 @@ export default function MapPage() {
                 <div className="rounded-xl border border-blue-500/30 bg-blue-950/30 p-3">
                   <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-blue-400">
                     <Activity className="h-4 w-4" />
-                    Coverage
+                    Cell layer
                   </div>
                   <div className="mt-1.5 text-2xl font-black text-blue-300">
-                    {formatNumber(showCells ? deckCells.length : 0)}
+                    {showCells ? formatNumber(deckCells.length) : "Off"}
                   </div>
                   <div className="text-[11px] text-slate-400 mt-0.5">
-                    {showCells ? "Cells visible" : "Cells hidden"} @ Zoom {zoomLevel}
+                    {showCells ? "Cells visible" : "Layer hidden"} &middot; Zoom {Number(zoomLevel).toFixed(1)}
                   </div>
                 </div>
 

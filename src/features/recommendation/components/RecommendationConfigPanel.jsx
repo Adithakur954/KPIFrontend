@@ -59,9 +59,9 @@ export default function RecommendationConfigPanel({
     <>
       <section className="rounded-2xl border border-zinc-200 bg-white shadow-sm overflow-hidden">
         <div className="border-b border-zinc-100 bg-white p-6">
-          <h2 className="text-xl font-bold tracking-tight text-zinc-900">RCA Recommendation</h2>
+          <h2 className="text-lg font-semibold tracking-tight text-zinc-900">Analysis configuration</h2>
           <p className="mt-1 text-xs text-zinc-500 uppercase tracking-wider font-medium">
-            Step 1: Configure Mapping & Scope
+            Choose source, date range and column mapping
           </p>
         </div>
 
@@ -123,7 +123,9 @@ export default function RecommendationConfigPanel({
             </div>
           </div>
 
-          <div className="rounded-2xl bg-zinc-50/50 border border-zinc-100 p-5">
+          <details className="portal-disclosure" open={Object.values(baseMapping).filter(Boolean).length < BASE_FIELDS.length ? true : undefined}>
+            <summary>Column mapping <span className="ml-2 text-xs font-normal text-slate-500">Review required source columns</span></summary>
+            <div className="portal-disclosure-body"><div className="rounded-2xl bg-zinc-50/50 border border-zinc-100 p-5">
             <div className="mb-4 flex items-center gap-2">
               <div className="h-1 w-1 rounded-full bg-zinc-400" />
               <span className="text-[11px] font-bold uppercase tracking-widest text-zinc-500">Core Column Mapping</span>
@@ -152,7 +154,8 @@ export default function RecommendationConfigPanel({
                 </div>
               ))}
             </div>
-          </div>
+          </div></div>
+          </details>
 
           <div className="border-t border-zinc-100 pt-6 space-y-4">
             <div className="inline-flex rounded-lg border border-zinc-300 p-1">
@@ -466,12 +469,12 @@ export default function RecommendationConfigPanel({
           </div>
         </details>
 
-        <div className="flex flex-col items-center justify-between gap-4 border-t border-zinc-100 bg-white p-6 sm:flex-row">
+        <div className="portal-rca-actions flex flex-col items-center justify-between gap-4 border-t border-zinc-100 bg-white p-4 sm:flex-row">
           <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
             <button
               onClick={handleRun}
               disabled={loading || exporting || !selectedFileId}
-              className="flex h-11 items-center justify-center gap-2 rounded-xl bg-zinc-900 px-6 text-sm font-bold text-white shadow-lg shadow-zinc-200 transition-all hover:bg-zinc-800 active:scale-95 disabled:opacity-30"
+              className="portal-button portal-button-primary h-11 px-6"
             >
               {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4 fill-current" />}
               Run Recommendation
@@ -491,11 +494,13 @@ export default function RecommendationConfigPanel({
               <input
                 value={presetName}
                 onChange={(e) => setPresetName(e.target.value)}
+                aria-label="Configuration preset name"
                 placeholder="Preset name..."
                 className="h-11 w-48 rounded-xl border border-zinc-200 bg-zinc-50/50 pl-4 pr-10 text-sm focus:border-indigo-500 focus:bg-white focus:outline-none"
               />
               <button
                 onClick={handleSavePreset}
+                aria-label="Save configuration preset"
                 className="absolute right-2 top-1.5 flex h-8 w-8 items-center justify-center rounded-lg text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600"
               >
                 <Save className="h-4 w-4" />
@@ -504,7 +509,7 @@ export default function RecommendationConfigPanel({
           </div>
         </div>
         {jobMessage ? <div role="status" aria-live="polite" className="mx-6 mb-3 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700">{jobMessage}</div> : null}
-        {error ? <div className="mx-6 mb-6 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{error}</div> : null}
+        {error ? <div role="alert" className="mx-6 mb-6 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{error}</div> : null}
       </section>
     </>
   );

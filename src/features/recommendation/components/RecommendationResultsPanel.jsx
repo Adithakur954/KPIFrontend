@@ -1,4 +1,6 @@
+import EvidencePanel, { EvidencePreview } from "./EvidencePanel";
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import DetailDialog from "@/shared/components/common/DetailDialog";
 import { useNavigate } from "react-router-dom";
 import {
   ResponsiveContainer,
@@ -163,6 +165,8 @@ export default function RecommendationResultsPanel({
   const [heatTooltip, setHeatTooltip] = useState(null);
   const [showHeatScores, setShowHeatScores] = useState(false);
   const [showRecommendations, setShowRecommendations] = useState(false);
+  const [selectedDetail, setSelectedDetail] = useState(null);
+  const [rowDensity, setRowDensity] = useState("comfortable");
   const [exportingPdf, setExportingPdf] = useState(false);
   const [detailPage, setDetailPage] = useState(1);
   const visualizationRef = useRef(null);
@@ -788,7 +792,12 @@ export default function RecommendationResultsPanel({
 
   return (
     <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
-      <div className="flex items-center justify-between gap-3">
+      {selectedDetail && <DetailDialog title={`Cell details: ${selectedDetail["Short name"] || "Unknown"}`} onClose={() => setSelectedDetail(null)}>
+        <dl className="rca-detail-metadata">{["Date", "Severity", "Anomaly Score", "Primary Cause", "Secondary Causes"].map(key => selectedDetail[key] !== undefined && selectedDetail[key] !== null && selectedDetail[key] !== "" ? <div key={key} className={key.includes("Cause") ? "rca-detail-cause" : "rca-detail-stat"}><dt className="text-xs font-semibold text-slate-500">{key}</dt><dd className="mt-1 whitespace-pre-line text-sm leading-relaxed text-slate-800">{typeof selectedDetail[key] === "object" ? JSON.stringify(selectedDetail[key], null, 2) : String(selectedDetail[key])}</dd></div> : null)}</dl>
+        <EvidencePanel row={selectedDetail} config={currentConfig} />
+        {showRecommendations && <div className="mt-6 border-t border-slate-200 pt-5"><h3 className="font-semibold">Recommendation</h3><p className="mt-2 whitespace-pre-line text-sm leading-relaxed">{selectedDetail["Vendor Recommendation"] || selectedDetail["Nokia Recommendation"] || "No recommendation returned."}</p></div>}
+      </DetailDialog>}
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h3 className="text-lg font-semibold text-zinc-900">Result Summary</h3>
         <div className="flex flex-wrap items-center gap-2">
           {resultView === "table" ? (
@@ -855,15 +864,15 @@ export default function RecommendationResultsPanel({
         </div>
       </div>
 
-      <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3 text-sm">
+      <div className="mt-3 grid grid-cols-3 gap-2 text-sm">
         <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-3">
-          Anomalies: <strong>{result?.summary?.anomaly_count || 0}</strong>
+          <span className="block text-xs text-slate-600">Anomalies</span><strong className="mt-1 block text-xl">{result?.summary?.anomaly_count || 0}</strong>
         </div>
         <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-3">
-          Critical: <strong>{result?.summary?.critical_count || 0}</strong>
+          <span className="block text-xs text-slate-600">Critical</span><strong className="mt-1 block text-xl">{result?.summary?.critical_count || 0}</strong>
         </div>
         <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-3">
-          Major: <strong>{result?.summary?.major_count || 0}</strong>
+          <span className="block text-xs text-slate-600">Major</span><strong className="mt-1 block text-xl">{result?.summary?.major_count || 0}</strong>
         </div>
       </div>
 
@@ -901,13 +910,14 @@ export default function RecommendationResultsPanel({
         <div className="mt-3 rounded-lg border border-zinc-200">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 px-3 py-3 text-sm">
             <p role="status" aria-live="polite">Showing {sortedAnomalyDetails.length ? detailOffset + 1 : 0}-{Math.min(detailOffset + detailPageSize, sortedAnomalyDetails.length)} of {sortedAnomalyDetails.length} returned rows</p>
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <label className="flex items-center gap-2 text-xs text-slate-600">Rows<select aria-label="Table density" value={rowDensity} onChange={event => setRowDensity(event.target.value)} className="rounded border border-slate-200 bg-white px-2 py-1"><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select></label>
               <button type="button" disabled={currentDetailPage === 1} onClick={() => setDetailPage(currentDetailPage - 1)} className="rounded border px-3 py-1 disabled:opacity-40">Previous rows</button>
               <span>Page {currentDetailPage} of {detailPageCount}</span>
               <button type="button" disabled={currentDetailPage === detailPageCount} onClick={() => setDetailPage(currentDetailPage + 1)} className="rounded border px-3 py-1 disabled:opacity-40">Next rows</button>
             </div>
           </div>
-          <div className="overflow-auto">
+          <div className="portal-table-scroll" data-density={rowDensity} tabIndex={0} role="region" aria-label="RCA analysis rows">
           <table className="w-full text-sm">
             <thead className="bg-zinc-50">
               <tr className="text-left">
@@ -915,8 +925,9 @@ export default function RecommendationResultsPanel({
                 <th className="px-3 py-2">{shortNameDisplayLabel}</th>
                 <th className="px-3 py-2">Date</th>
                 <th className="px-3 py-2">Severity</th>
-                <th className="px-3 py-2">Score</th>
+                <th className="portal-metric-number px-3 py-2">Score</th>
                 <th className="px-3 py-2">Cause and additional patterns</th>
+                <th className="px-3 py-2">KPI evidence</th>
                 {showRecommendations ? <th className="px-3 py-2">Recommendation and implementation</th> : null}
               </tr>
             </thead>
@@ -932,17 +943,18 @@ export default function RecommendationResultsPanel({
                     <td className="px-3 py-2">{row.Period || "-"}</td>
                   ) : null}
                   <td className="px-3 py-2">{row["Short name"]}</td>
-                  <td className="px-3 py-2">
+                  <td className="whitespace-nowrap px-3 py-2">
                     {row.Date ? String(row.Date).slice(0, 10) : ""}
                   </td>
-                  <td className="px-3 py-2">{row.Severity}</td>
-                  <td className="px-3 py-2">{row["Anomaly Score"]}</td>
+                  <td className="px-3 py-2"><span className="portal-severity" data-severity={String(row.Severity || "").toLowerCase()}>{row.Severity}</span></td>
+                  <td className="portal-metric-number px-3 py-2">{row["Anomaly Score"]}</td>
                   <td className="min-w-80 max-w-xl px-3 py-2">
                     <div className="font-semibold">{row["Primary Cause"]}</div>
                     {row["Secondary Causes"] ? (
                       <p className="mt-2 text-xs leading-relaxed text-zinc-700"><strong>Additional patterns: </strong>{row["Secondary Causes"]}</p>
                     ) : null}
                   </td>
+                  <td className="px-3 py-2"><EvidencePreview row={row} config={currentConfig} onOpen={() => setSelectedDetail(row)} /></td>
                   {showRecommendations ? <td className="min-w-96 max-w-2xl px-3 py-2">
                     <p className="whitespace-pre-line break-words leading-relaxed">
                     {row["Vendor Recommendation"] ||

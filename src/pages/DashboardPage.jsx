@@ -1,3 +1,6 @@
+import PageHeading from "@/shared/components/common/PageHeading";
+import OverviewPanel from "@/features/dashboard/components/OverviewPanel";
+import InventoryCard from "@/features/dashboard/components/InventoryCard";
 import { useEffect, useState, useRef, useCallback, useContext } from "react";
 import {
   Activity,
@@ -662,20 +665,6 @@ export default function DashboardPage() {
   ]);
 
   const icons = [Activity, Radio, Layers, MapPin, Sliders, Bell];
-  const iconColors = [
-    { bg: "bg-gradient-to-br from-blue-500 to-blue-600", text: "text-white" },
-    { bg: "bg-gradient-to-br from-green-500 to-green-600", text: "text-white" },
-    {
-      bg: "bg-gradient-to-br from-purple-500 to-purple-600",
-      text: "text-white",
-    },
-    {
-      bg: "bg-gradient-to-br from-orange-500 to-orange-600",
-      text: "text-white",
-    },
-    { bg: "bg-gradient-to-br from-pink-500 to-pink-600", text: "text-white" },
-    { bg: "bg-gradient-to-br from-cyan-500 to-cyan-600", text: "text-white" },
-  ];
 
   const metricList = [
     { label: "Total Cells", value: dashboardData?.totalCells },
@@ -958,30 +947,17 @@ export default function DashboardPage() {
     importingThresholds ||
     (Boolean(selectedDashboardFileId) && dynamicPerformanceLoading);
 
+  const overviewEntries = selectedDashboardFileId
+    ? dynamicPerformanceEntries
+    : Object.entries({ ...(performanceData?.averages || {}), ...(performanceData?.peaks || {}) }).map(([key, value]) => ({ key, value }));
+  const evaluatedEntries = overviewEntries.filter(entry => (!selectedDashboardFileId || entry.count > 0) && entry.value !== null && entry.value !== "" && Number.isFinite(Number(entry.value)) && getMetricStatus(entry.key, entry.value).status !== "neutral");
+  const degradedCount = evaluatedEntries.filter(entry => getMetricStatus(entry.key, entry.value).status === "bad").length;
+  const scopedUpload = dashboardFileOptions.find(file => String(file.id) === String(selectedDashboardFileId));
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
-      {/* Modern Header */}
-      <div className="bg-white border-b-1 border-gray-200 sticky top-0 z-50">
-        <div className="max-w-[1800px] mx-auto px-8 py-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="relative">
-                <div className="absolute inset-0 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl blur opacity-40"></div>
-                <div className="relative p-4 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl">
-                  <Zap className="w-8 h-8 text-white" />
-                </div>
-              </div>
-              <div>
-                <h1 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-slate-900 via-blue-900 to-indigo-900">
-                  Network Dashboard
-                </h1>
-                <p className="text-base text-slate-600 mt-1 font-medium">
-                  Real-time performance monitoring & analytics
-                </p>
-              </div>
-            </div>
+      <PageHeading title="Network Dashboard" eyebrow="Monitoring / Overview" description="Network performance, thresholds and upload overview" icon={Activity} actions={<>
 
-            <div className="flex items-center gap-4">
               <div
                 title={backendHealth?.timestamp ? `Last response: ${backendHealth.timestamp}` : "Backend health check"}
                 className={`hidden items-center gap-2 rounded-full border px-3 py-2 text-xs font-bold lg:flex ${
@@ -991,7 +967,7 @@ export default function DashboardPage() {
                 }`}
               >
                 <span className={`h-2 w-2 rounded-full ${backendHealth?.status === "UP" ? "bg-emerald-500" : "bg-red-500"}`} />
-                Backend {backendHealth?.status === "UP" ? "Online" : "Unavailable"}
+                Service {backendHealth?.status === "UP" ? "online" : "unavailable"}
               </div>
               {isSuperAdmin && (
                 <div className="flex flex-col">
@@ -1005,7 +981,8 @@ export default function DashboardPage() {
                       setSelectedDashboardFileId("");
                       hasReconciledDashboardScopeRef.current = false;
                     }}
-                    className="min-w-[240px] px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white text-slate-700"
+                    aria-label="Company scope"
+                    className="w-full max-w-[320px] px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white text-slate-700"
                   >
                     <option value="">All companies</option>
                     {companies.map((company) => (
@@ -1023,7 +1000,8 @@ export default function DashboardPage() {
                 <select
                   value={selectedDashboardFileId}
                   onChange={(e) => setSelectedDashboardFileId(e.target.value)}
-                  className="min-w-[320px] px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white text-slate-700"
+                  aria-label="KPI file scope"
+                  className="w-full max-w-[320px] px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white text-slate-700"
                 >
                   <option value="">All KPI uploads</option>
                   {dashboardFileOptions.map((file) => (
@@ -1060,10 +1038,7 @@ export default function DashboardPage() {
                   <span className="text-base font-semibold">Saved!</span>
                 </div>
               )}
-            </div>
-          </div>
-        </div>
-      </div>
+      </>} />
 
       <div className="max-w-[1800px] mx-auto px-4 py-4 space-y-8">
         <div className="bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-700">
@@ -1088,48 +1063,10 @@ export default function DashboardPage() {
           </span>
         </div>
 
-        {/* Stats Grid - Changed to 4 columns */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6">
-          {metricList.map((metric, i) => {
-            const Icon = icons[i];
-            const colors = iconColors[i];
-            return (
-              <div
-                key={metric.label}
-                className="group relative overflow-hidden bg-white rounded-3xl shadow-lg hover:shadow-2xl transition-all duration-500 border border-gray-100"
-              >
-                {/* Background Decoration */}
-                <div className="absolute top-0 right-0 w-40 h-40 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-full -mr-20 -mt-20 opacity-50 group-hover:scale-150 transition-transform duration-700"></div>
+        <OverviewPanel loading={loading || dynamicPerformanceLoading} evaluatedCount={evaluatedEntries.length} degradedCount={degradedCount} upload={scopedUpload} />
 
-                <div className="relative px-5 py-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <div
-                      className={`${colors.bg} ${colors.text} p-4 rounded-2xl shadow-lg group-hover:scale-110 group-hover:rotate-6 transition-transform duration-300`}
-                    >
-                      <Icon className="w-4 h-4" />
-                    </div>
-                    <p className="text-md font-bold text-slate-600 uppercase tracking-wide mb-1">
-                      {metric.label}
-                    </p>
-                    <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                      <TrendingUp className="w-6 h-6 text-emerald-500" />
-                    </div>
-                  </div>
-
-                  {loading ? (
-                    <div className="flex items-center gap-3">
-                      <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
-                      <span className="text-slate-400">Loading...</span>
-                    </div>
-                  ) : (
-                    <div className="text-3xl flex justify-center font-extrabold text-slate-900 leading-tight">
-                      {metric.value?.toLocaleString() ?? "—"}
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-          })}
+        <div className="portal-inventory-grid">
+          {metricList.map((metric, index) => <InventoryCard key={metric.label} label={metric.label} value={metric.value} icon={icons[index]} loading={loading} />)}
         </div>
 
         {/* Performance Section */}
@@ -1274,13 +1211,13 @@ export default function DashboardPage() {
                         <div
                           className={`${status.badge} p-1.5 rounded-full flex items-center justify-center shadow-sm`}
                         >
-                          {status.icon}
+                          {status.icon}<span className="ml-1 text-xs font-semibold">{status.status === "bad" ? "Outside threshold" : status.status === "good" ? "Within threshold" : "No threshold"}</span>
                         </div>
                       </div>
 
                       <div className="flex flex-col space-y-3">
                         {/* Title */}
-                        <div className="pr-12">
+                        <div className="pt-8">
                           <h4 className="text-sm font-bold text-slate-800 leading-tight">
                             {entry?.label || formatKeyName(key)}
                           </h4>

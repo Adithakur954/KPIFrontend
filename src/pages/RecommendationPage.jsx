@@ -1,3 +1,4 @@
+import PageHeading from "@/shared/components/common/PageHeading";
 import React, { lazy, Suspense, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { asyncWait } from "@/shared/api/asyncWait";
 import { fetchDynamicKpiColumns, fetchKpiUploadHistory } from "@/features/kpi/services/kpiService";
@@ -430,7 +431,11 @@ export default function RecommendationPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-stone-100 via-zinc-50 to-white p-4 md:p-6">
-      <div className="mx-auto w-full max-w-[98vw] space-y-4">
+      <div className="mx-auto w-full max-w-[1600px] space-y-4">
+        <PageHeading title="Root Cause Analysis" eyebrow="Analysis / RCA" description="Identify causes, review additional patterns and optionally include recommendations." className="portal-heading-inline" />
+        <details key={result && resultScopeKey === currentScopeKey ? "results-ready" : "configure"} className="portal-disclosure" open={!(result && resultScopeKey === currentScopeKey)}>
+          <summary>Configure analysis <span className="ml-2 text-xs font-normal text-slate-500">Source, comparison dates, mappings and thresholds</span></summary>
+          <div className="portal-disclosure-body space-y-4">
         <RecommendationConfigPanel
           files={files}
           selectedFileId={sharedSelectedFileId}
@@ -478,6 +483,8 @@ export default function RecommendationPage() {
           error={error}
           jobMessage={jobMessage}
         />
+          </div>
+        </details>
 
         {result && resultScopeKey === currentScopeKey && <Suspense fallback={<p role="status" className="p-6 text-slate-600">Loading analysis results...</p>}><RecommendationResultsPanel
           result={result}

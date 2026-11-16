@@ -1,3 +1,4 @@
+import PageHeading from "@/shared/components/common/PageHeading";
 import { useEffect, useState } from "react";
 import { 
   Upload, 
@@ -696,20 +697,9 @@ export default function UploadsPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/40">
-      <div className="max-w-6xl mx-auto px-4 py-12">
+      <div className="max-w-6xl mx-auto px-4 py-6">
         
-        {/* Header */}
-        <div className="text-center mb-8">
-          <div className={`inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br ${colorClasses.gradient} rounded-2xl mb-4 shadow-lg ${colorClasses.shadow} transition-all duration-300`}>
-            <ArrowUpCircle className="w-8 h-8 text-white" strokeWidth={2} />
-          </div>
-          <h1 className="text-4xl font-semibold text-slate-800 mb-3 tracking-tight">
-            Upload Data Files
-          </h1>
-          <p className="text-slate-500 text-lg max-w-2xl mx-auto">
-            {selectedType.description}
-          </p>
-        </div>
+        <PageHeading title="Upload Data Files" eyebrow="Administration / Data imports" description={selectedType.description} icon={ArrowUpCircle} className="portal-heading-inline mb-8" />
 
         {isSuperAdmin && (
           <div className="mb-8 rounded-2xl border border-slate-200/60 bg-white/80 p-4 shadow-sm backdrop-blur-sm">

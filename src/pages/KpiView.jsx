@@ -1,3 +1,6 @@
+import PageHeading from "@/shared/components/common/PageHeading";
+import PageState from "@/shared/components/common/PageState";
+import ExportMenu from "@/shared/components/common/ExportMenu";
 import { aggregateChartRows as aggregateDataByXAxis, numericChartValue } from "@/features/kpi/utils/chartData";
 import { BoundedAnalyticsCache, analyticsCacheScope, invalidateAnalyticsCache, ANALYTICS_CACHE_TTL_MS } from "@/shared/api/analyticsCache";
 import useAnalyticsRefresh from "@/shared/hooks/useAnalyticsRefresh";
@@ -1128,24 +1131,8 @@ export default function KpiView() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
-      {/* Header */}
-      <div className="bg-white/80 backdrop-blur-lg border-b border-gray-200 sticky top-0 z-50">
-        <div className="max-w-[1600px] mx-auto px-6 py-2">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-4">
-              <div className="p-3 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl">
-                <BarChart3 className="w-7 h-6 text-white" />
-              </div>
-              <div>
-                <h1 className="text-xl font-semibold bg-gradient-to-r from-gray-800 to-gray-600 bg-clip-text text-transparent">
-                  KPI Analytics Dashboard
-                </h1>
-                <p className="text-base text-gray-500 mt-0.5">
-                  Real-time network performance metrics
-                </p>
-              </div>
-            </div>
-            <div className="flex flex-wrap items-center gap-3">
+      <PageHeading title="KPI Analytics Dashboard" eyebrow="Monitoring / KPI analytics" description="Explore uploaded KPI performance and trends" icon={BarChart3} actions={<>
+
               <button type="button" onClick={invalidateAnalyticsCache} className="rounded-lg border border-blue-200 px-3 py-2 text-sm font-semibold text-blue-700">Reload data</button>
               <button
                 onClick={() => setPerformanceMode((prev) => !prev)}
@@ -1158,18 +1145,15 @@ export default function KpiView() {
               >
                 Performance: {performanceMode ? "On" : "Off"}
               </button>
-              <div className="bg-blue-50 px-5 py-3 rounded-lg border border-blue-100">
+              <div className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2">
                 <p className="text-sm text-gray-500 font-medium">
                   Active Filters
                 </p>
-                <p className="text-2xl font-bold text-blue-600">
+                <p className="text-sm font-semibold text-blue-700">
                   {totalFiltersActive}
                 </p>
               </div>
-            </div>
-          </div>
-        </div>
-      </div>
+      </>} />
 
       <div className="max-w-[1600px] mx-auto px-6 py-6 space-y-6">
         {/* Filter Section */}
@@ -1182,67 +1166,13 @@ export default function KpiView() {
                   Filters
                 </CardTitle>
               </div>
-              <div className="flex w-full flex-col items-stretch gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
-                {hasSelectedFile && (
-                  <button
-                    onClick={() => exportKpiReport("standard")}
-                    disabled={!hasSelectedFile || downloadingReport}
-                    className={`px-5 py-2.5 text-white text-base font-semibold rounded-lg transition-all duration-200 shadow-md hover:shadow-lg inline-flex items-center gap-2 ${
-                      downloadingReport
-                        ? "bg-emerald-400 cursor-not-allowed"
-                        : "bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700"
-                    }`}
-                  >
-                    {downloadingReport ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <Download className="w-4 h-4" />
-                    )}
-                    Export Excel (Format 1)
-                  </button>
-                )}
-                {hasSelectedFile && (
-                  <button
-                    onClick={() => exportKpiReport("date_matrix")}
-                    disabled={!hasSelectedFile || downloadingReport}
-                    className={`px-5 py-2.5 text-white text-base font-semibold rounded-lg transition-all duration-200 shadow-md hover:shadow-lg inline-flex items-center gap-2 ${
-                      downloadingReport
-                        ? "bg-teal-400 cursor-not-allowed"
-                        : "bg-gradient-to-r from-teal-500 to-cyan-600 hover:from-teal-600 hover:to-cyan-700"
-                    }`}
-                  >
-                    {downloadingReport ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <Download className="w-4 h-4" />
-                    )}
-                    Export Excel (Format 2)
-                  </button>
-                )}
-                <button
-                  onClick={exportKpiPdfReport}
-                  disabled={!visibleKpis.length || generatingPdfReport}
-                  className={`px-5 py-2.5 text-white text-base font-semibold rounded-lg transition-all duration-200 shadow-md hover:shadow-lg inline-flex items-center gap-2 ${
-                    !visibleKpis.length || generatingPdfReport
-                      ? "bg-rose-300 cursor-not-allowed"
-                      : "bg-gradient-to-r from-rose-500 to-pink-600 hover:from-rose-600 hover:to-pink-700"
-                  }`}
-                >
-                  {generatingPdfReport ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Download className="w-4 h-4" />
-                  )}
-                  Download PDF (current page)
-                </button>
-                {totalFiltersActive > 0 && (
-                  <button
-                    onClick={clearFilters}
-                    className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white text-base font-semibold rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all duration-200 shadow-md hover:shadow-lg"
-                  >
-                    Clear All ({totalFiltersActive})
-                  </button>
-                )}
+              <div className="flex flex-wrap items-center gap-2">
+                {totalFiltersActive > 0 && <button type="button" onClick={clearFilters} className="portal-button">Clear filters ({totalFiltersActive})</button>}
+                <ExportMenu busy={downloadingReport || generatingPdfReport} items={[
+                  { label: "Excel: KPI summary", description: "Standard KPI workbook", disabled: !hasSelectedFile, onSelect: () => exportKpiReport("standard") },
+                  { label: "Excel: date comparison", description: "KPI values arranged by date", disabled: !hasSelectedFile, onSelect: () => exportKpiReport("date_matrix") },
+                  { label: "PDF: current chart page", description: "Charts on the current page", disabled: !visibleKpis.length, onSelect: exportKpiPdfReport },
+                ]} />
               </div>
             </div>
           </CardHeader>
@@ -1257,10 +1187,11 @@ export default function KpiView() {
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-end">
                 <div>
-                  <label className="text-sm text-gray-600 mb-2 block font-medium">
+                  <label htmlFor="kpi-source-file" className="text-sm text-gray-600 mb-2 block font-medium">
                     Select Uploaded KPI File
                   </label>
                   <select
+                    id="kpi-source-file"
                     value={selectedKpiFileId}
                     onChange={(e) => setSelectedKpiFileId(e.target.value)}
                     className="w-full px-4 py-2.5 text-base border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all bg-white"
@@ -1276,11 +1207,13 @@ export default function KpiView() {
                   </select>
                 </div>
                 <div className="flex flex-col gap-2">
-                  <p className="text-sm text-gray-500">
-                    Selecting a file reloads KPI cards for only that upload.
+                  <p className="text-xs text-slate-500">
+                    Charts reflect the selected upload.
                   </p>
                   {selectedKpiFileId && (
-                    <div className="flex flex-wrap gap-2">
+                    <details className="text-sm">
+                      <summary className="cursor-pointer py-2 font-medium text-blue-700">Configure columns</summary>
+                    <div className="flex flex-wrap gap-2 pt-2">
                       <button
                         onClick={() => setMetricConfigOpen((prev) => !prev)}
                         className="self-start px-3 py-2 text-sm font-semibold rounded-lg border border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100 transition-colors"
@@ -1298,6 +1231,7 @@ export default function KpiView() {
                           : "Configure Filter Headers"}
                       </button>
                     </div>
+                    </details>
                   )}
                 </div>
               </div>
@@ -1416,6 +1350,9 @@ export default function KpiView() {
               )}
             </div>
 
+            <details className="portal-disclosure mb-3">
+              <summary>Comparison dates <span className="ml-2 text-xs font-normal text-slate-500">Pre and post ranges</span></summary>
+              <div className="portal-disclosure-body">
             {/* Pre/Post Date Range Filter */}
             <div className="mb-6 p-5 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-100">
               <div className="flex items-center gap-2 mb-4">
@@ -1521,6 +1458,11 @@ export default function KpiView() {
               </div>
             </div>
 
+              </div>
+            </details>
+            <details className="portal-disclosure mb-3">
+              <summary>Dimension filters <span className="ml-2 text-xs font-normal text-slate-500">{activeFilters.length} active</span></summary>
+              <div className="portal-disclosure-body">
             {/* Multi-Select Filters */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 mb-4">
               {dynamicFilterFields.map((field) => (
@@ -1539,6 +1481,8 @@ export default function KpiView() {
               ))}
             </div>
 
+              </div>
+            </details>
             {/* Active Filters Pills */}
             {totalFiltersActive > 0 && (
               <div className="flex flex-wrap gap-2 pt-4 border-t border-gray-100">
@@ -1686,28 +1630,11 @@ export default function KpiView() {
         )}
 
         {/* KPI Charts Grid */}
-        {hasSelectedFile && isLoadingKpis && (
-          <Card className="border border-blue-200 bg-blue-50">
-            <CardContent className="py-5">
-              <div className="flex items-center gap-3 text-blue-800">
-                <Loader2 className="h-5 w-5 animate-spin" />
-                <p className="text-sm font-semibold">Loading KPI metrics...</p>
-              </div>
-            </CardContent>
-          </Card>
-        )}
+        {hasSelectedFile && isLoadingKpis && <PageState variant="loading" title="Loading KPI metrics...">Preparing charts for the selected upload.</PageState>}
+        {!hasSelectedFile && <PageState title="Choose a KPI upload" action={<button type="button" className="portal-button" onClick={() => { const source = document.getElementById("kpi-source-file"); source?.scrollIntoView({ block: "center" }); source?.focus(); }}>Choose upload</button>}>Select a source file above to explore its charts, comparisons and exports.</PageState>}
 
-        {noKpisForSelectedFile && (
-          <Card className="border border-amber-200 bg-amber-50">
-            <CardContent className="py-5">
-              <p className="text-sm font-semibold text-amber-800">
-                No KPI metrics with data were found in this uploaded file.
-              </p>
-            </CardContent>
-          </Card>
-        )}
-
-        {loadError && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">{loadError} <button type="button" onClick={invalidateAnalyticsCache} className="ml-3 underline">Retry KPI data</button></div>}
+        {noKpisForSelectedFile && <PageState title="No KPI observations found">Review the selected upload and configure its numeric KPI columns, or select another file.</PageState>}
+        {loadError && <PageState variant="error" title="KPI data could not load" action={<button type="button" onClick={invalidateAnalyticsCache} className="portal-button">Retry KPI data</button>}>{loadError}</PageState>}
         {hasSelectedFile && !isLoadingKpis && filteredKpis.length > 0 && <nav aria-label="KPI card pages" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-white p-3 text-sm">
           <span>Showing KPI cards {(currentKpiPage - 1) * kpisPerPage + 1}-{Math.min(currentKpiPage * kpisPerPage, filteredKpis.length)} of {filteredKpis.length}</span>
           <div className="flex items-center gap-3"><button type="button" disabled={currentKpiPage === 1} onClick={() => setKpiPage(currentKpiPage - 1)}>Previous KPIs</button><span>Page {currentKpiPage} of {kpiPageCount}</span><button type="button" disabled={currentKpiPage === kpiPageCount} onClick={() => setKpiPage(currentKpiPage + 1)}>Next KPIs</button></div>

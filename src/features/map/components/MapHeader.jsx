@@ -1,153 +1,49 @@
-import { useState } from "react";
-import { Activity, ChevronDown, Download, Filter, Layers, Loader2, Minus, Plus, Radio, RotateCcw, Target, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Activity, ChevronDown, Download, Filter, Layers, Loader2, LocateFixed, Minus, Plus, Radio, RotateCcw, Target } from "lucide-react";
 
 export default function MapHeader({
-  sidebarOpen,
-  drawerMode,
-  analyticsDrawerOpen,
-  onToggleSidebar,
-  onOpenFilter,
-  onOpenAnalytics,
-  siteMarkerScale = 1,
-  cellRadiusScale = 1,
-  onDecreaseSiteSize,
-  onIncreaseSiteSize,
-  onSiteSizeChange,
-  onResetSiteSize,
-  onDecreaseCellRadius,
-  onIncreaseCellRadius,
-  onCellRadiusChange,
-  onResetCellRadius,
-  onDownloadPdf,
-  exportingPdf = false,
-  mapReady = true,
+  sidebarOpen, drawerMode, analyticsDrawerOpen, onOpenFilter, onOpenAnalytics,
+  siteMarkerScale = 1, cellRadiusScale = 1,
+  onDecreaseSiteSize, onIncreaseSiteSize, onSiteSizeChange, onResetSiteSize,
+  onDecreaseCellRadius, onIncreaseCellRadius, onCellRadiusChange, onResetCellRadius,
+  onDownloadPdf, exportingPdf = false, mapReady = true,
+  siteCount = 0, cellCount = 0, dataReady = false, onFitSites, canFitSites = false,
+  statusLabel = "Preparing map", needsAttention = false,
 }) {
   const [utilityOpen, setUtilityOpen] = useState(false);
-  const siteSizePercent = Math.round(siteMarkerScale * 100);
-  const cellRadiusPercent = Math.round(cellRadiusScale * 100);
+  const utility = useRef(null);
+  const utilityButton = useRef(null);
+  useEffect(() => {
+    if (!utilityOpen) return;
+    const closeOutside = event => { if (!utility.current?.contains(event.target)) setUtilityOpen(false); };
+    const closeEscape = event => { if (event.key === "Escape") { setUtilityOpen(false); utilityButton.current?.focus(); } };
+    document.addEventListener("pointerdown", closeOutside);
+    document.addEventListener("keydown", closeEscape);
+    return () => { document.removeEventListener("pointerdown", closeOutside); document.removeEventListener("keydown", closeEscape); };
+  }, [utilityOpen]);
 
-  return (
-    <div className="relative z-30 flex flex-wrap items-center justify-between gap-2 border-b border-slate-800/80 bg-slate-950/95 py-3 pl-16 pr-3 text-white shadow-xl backdrop-blur-xl lg:min-h-16 lg:px-5">
-      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3">
-        <button
-          type="button"
-          onClick={onToggleSidebar}
-          className="hidden items-center justify-center rounded-xl border border-slate-800 bg-slate-900/90 p-2.5 text-slate-300 shadow-sm transition-all hover:border-slate-700 hover:bg-slate-800 hover:text-white lg:flex"
-          title={sidebarOpen ? "Hide panel" : "Show panel"}
-        >
-          {sidebarOpen ? <X className="h-4.5 w-4.5" /> : <Filter className="h-4.5 w-4.5" />}
-        </button>
-
-        <div className="hidden items-center gap-3 border-r border-slate-800/80 pr-4 xl:flex">
-          <div className="relative flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 shadow-md shadow-blue-500/20">
-            <Radio className="h-5 w-5 text-white" />
-            <span className="absolute -right-0.5 -top-0.5 flex h-3 w-3">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex h-3 w-3 rounded-full bg-emerald-500 border border-slate-950"></span>
-            </span>
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-base font-black tracking-tight text-white">Coverage Map</span>
-              <span className="rounded-full border border-blue-500/30 bg-blue-500/10 px-2 py-0.5 text-[10px] font-bold text-blue-400">{mapReady ? "READY" : "LOADING"}</span>
-            </div>
-            <div className="text-[11px] font-medium text-slate-400">Network Telemetry & Analytics</div>
-          </div>
-        </div>
-
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={onOpenFilter}
-            className={`flex items-center gap-2 rounded-xl border px-3.5 py-2 text-xs font-bold transition-all shadow-sm ${
-              drawerMode === "filter" && sidebarOpen
-                ? "border-blue-500/60 bg-blue-600/90 text-white shadow-blue-600/20"
-                : "border-slate-800 bg-slate-900/80 text-slate-300 hover:border-slate-700 hover:bg-slate-800 hover:text-white"
-            }`}
-          >
-            <Filter className="h-4 w-4 text-blue-400" />
-            <span>Filter</span>
-          </button>
-          <button
-            type="button"
-            onClick={onOpenAnalytics}
-            className={`flex items-center gap-2 rounded-xl border px-3.5 py-2 text-xs font-bold transition-all shadow-sm ${
-              analyticsDrawerOpen
-                ? "border-blue-500/60 bg-blue-600/90 text-white shadow-blue-600/20"
-                : "border-slate-800 bg-slate-900/80 text-slate-300 hover:border-slate-700 hover:bg-slate-800 hover:text-white"
-            }`}
-          >
-            <Activity className="h-4 w-4 text-emerald-400" />
-            <span>Analytics</span>
-          </button>
-          <button
-            type="button"
-            onClick={onDownloadPdf}
-            disabled={exportingPdf || !mapReady}
-            className="flex items-center gap-2 rounded-xl border border-emerald-500/40 bg-gradient-to-r from-emerald-600 to-teal-600 px-3.5 py-2 text-xs font-bold text-white shadow-md shadow-emerald-900/30 transition-all hover:from-emerald-500 hover:to-teal-500 disabled:cursor-not-allowed disabled:opacity-60"
-            title="Download current map report as PDF"
-          >
-            {exportingPdf ? <Loader2 className="h-4 w-4 animate-spin text-white" /> : <Download className="h-4 w-4" />}
-            <span>{exportingPdf ? "Generating..." : "Download PDF"}</span>
-          </button>
-
-          <div className="static sm:relative">
-            <button
-              type="button"
-              onClick={() => setUtilityOpen((open) => !open)}
-              aria-expanded={utilityOpen}
-              className={`flex items-center gap-2 rounded-xl border px-3.5 py-2 text-xs font-bold transition-all shadow-sm ${
-                utilityOpen
-                  ? "border-blue-500/60 bg-blue-600/90 text-white"
-                  : "border-slate-800 bg-slate-900/80 text-slate-300 hover:border-slate-700 hover:bg-slate-800 hover:text-white"
-              }`}
-            >
-              <Target className="h-4 w-4 text-amber-400" />
-              <span>Utility</span>
-              <ChevronDown className={`h-3.5 w-3.5 transition-transform duration-200 ${utilityOpen ? "rotate-180" : ""}`} />
-            </button>
-
-            {utilityOpen && (
-              <div className="absolute left-3 right-3 top-full z-50 mt-2.5 w-auto rounded-2xl border border-slate-800 bg-slate-950/95 p-4 text-white shadow-2xl backdrop-blur-xl ring-1 ring-white/10 sm:left-auto sm:right-0 sm:w-72">
-                <SizeControl
-                  title="Site Size"
-                  description="Increase or reduce site marker size"
-                  percent={siteSizePercent}
-                  value={siteMarkerScale}
-                  onDecrease={onDecreaseSiteSize}
-                  onIncrease={onIncreaseSiteSize}
-                  onChange={onSiteSizeChange}
-                  onReset={onResetSiteSize}
-                  resetLabel="Reset site size"
-                />
-                <div className="my-3.5 border-t border-slate-800/80" />
-                <SizeControl
-                  title="Cell Radius"
-                  description="Increase or reduce cell sector coverage"
-                  percent={cellRadiusPercent}
-                  value={cellRadiusScale}
-                  onDecrease={onDecreaseCellRadius}
-                  onIncrease={onIncreaseCellRadius}
-                  onChange={onCellRadiusChange}
-                  onReset={onResetCellRadius}
-                  resetLabel="Reset cell radius"
-                />
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      <div className="hidden items-center gap-3 xl:flex">
-        <div className="flex items-center gap-2.5 rounded-xl border border-slate-800 bg-slate-900/80 px-3 py-1.5 shadow-sm">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-600 text-xs font-black text-white shadow-sm">
-            A
-          </div>
-          <div className="hidden text-xs font-bold text-slate-200 md:block">Admin</div>
-        </div>
-      </div>
+  return <header className="map-toolbar">
+    <div className="map-toolbar-heading">
+      <span className="map-toolbar-mark"><Radio size={22} /></span>
+      <div><p>Monitoring / Spatial analysis</p><h1>Coverage Map</h1></div>
+      <span className="map-toolbar-status" data-ready={mapReady} data-warning={needsAttention}><span />{statusLabel}</span>
+      <div className="map-toolbar-counts"><span><strong>{dataReady ? siteCount.toLocaleString() : "--"}</strong> sites</span><span><strong>{dataReady ? cellCount.toLocaleString() : "--"}</strong> cells</span></div>
     </div>
-  );
+    <div className="map-toolbar-actions" role="group" aria-label="Map controls">
+      <button type="button" onClick={onOpenFilter} aria-controls="map-filter-panel" aria-expanded={drawerMode === "filter" && sidebarOpen} className="map-tool-button" data-active={drawerMode === "filter" && sidebarOpen}><Filter size={16} />Filter</button>
+      <button type="button" onClick={onOpenAnalytics} aria-controls="map-analytics-panel" aria-expanded={analyticsDrawerOpen} className="map-tool-button" data-active={analyticsDrawerOpen}><Activity size={16} />Analytics</button>
+      <button type="button" onClick={onFitSites} disabled={!canFitSites} aria-label="Fit map to sites" title="Fit all filtered sites in the map" className="map-tool-button map-fit-button"><LocateFixed size={16} /><span>Fit sites</span></button>
+      <div ref={utility} className="map-display-control">
+        <button ref={utilityButton} type="button" onClick={() => setUtilityOpen(open => !open)} aria-expanded={utilityOpen} aria-controls="map-display-settings" className="map-tool-button" data-active={utilityOpen}><Target size={16} />Display<ChevronDown size={13} /></button>
+        {utilityOpen && <div id="map-display-settings" role="region" aria-label="Map display settings" className="map-display-popover">
+          <SizeControl title="Site Size" description="Adjust site marker visibility" percent={Math.round(siteMarkerScale * 100)} value={siteMarkerScale} onDecrease={onDecreaseSiteSize} onIncrease={onIncreaseSiteSize} onChange={onSiteSizeChange} onReset={onResetSiteSize} resetLabel="Reset site size" />
+          <div className="my-4 border-t border-slate-700" />
+          <SizeControl title="Cell Radius" description="Adjust cell sector coverage" percent={Math.round(cellRadiusScale * 100)} value={cellRadiusScale} onDecrease={onDecreaseCellRadius} onIncrease={onIncreaseCellRadius} onChange={onCellRadiusChange} onReset={onResetCellRadius} resetLabel="Reset cell radius" />
+        </div>}
+      </div>
+      <button type="button" onClick={onDownloadPdf} disabled={exportingPdf || !mapReady} aria-label={exportingPdf ? "Generating PDF" : "Download PDF"} className="map-tool-button map-tool-primary">{exportingPdf ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}<span>{exportingPdf ? "Preparing..." : "Export PDF"}</span></button>
+    </div>
+  </header>;
 }
 
 function SizeControl({
