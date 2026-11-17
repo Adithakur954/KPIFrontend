@@ -1,0 +1,932 @@
+[
+  {
+    "id": "001",
+    "method": "GET",
+    "path": "/api/v1/alarm-config/companies/{companyId}/zones"
+  },
+  {
+    "id": "002",
+    "method": "POST",
+    "path": "/api/v1/alarm-config/companies/{companyId}/zones"
+  },
+  {
+    "id": "003",
+    "method": "PUT",
+    "path": "/api/v1/alarm-config/companies/{companyId}/zones/{id}"
+  },
+  {
+    "id": "004",
+    "method": "GET",
+    "path": "/api/v1/alarm-config/companies/{companyId}/circles"
+  },
+  {
+    "id": "005",
+    "method": "POST",
+    "path": "/api/v1/alarm-config/companies/{companyId}/circles"
+  },
+  {
+    "id": "006",
+    "method": "PUT",
+    "path": "/api/v1/alarm-config/companies/{companyId}/circles/{id}"
+  },
+  {
+    "id": "007",
+    "method": "GET",
+    "path": "/api/v1/alarm-config/companies/{companyId}/circle-aliases"
+  },
+  {
+    "id": "008",
+    "method": "POST",
+    "path": "/api/v1/alarm-config/companies/{companyId}/circle-aliases"
+  },
+  {
+    "id": "009",
+    "method": "DELETE",
+    "path": "/api/v1/alarm-config/companies/{companyId}/circle-aliases/{id}"
+  },
+  {
+    "id": "010",
+    "method": "GET",
+    "path": "/api/v1/alarm-config/companies/{companyId}/circle-resolution"
+  },
+  {
+    "id": "011",
+    "method": "GET",
+    "path": "/api/v1/alarm-config/companies/{companyId}/feeds"
+  },
+  {
+    "id": "012",
+    "method": "GET",
+    "path": "/api/v1/alarm-config/companies/{companyId}/feeds/{id}"
+  },
+  {
+    "id": "013",
+    "method": "POST",
+    "path": "/api/v1/alarm-config/companies/{companyId}/feeds"
+  },
+  {
+    "id": "014",
+    "method": "PUT",
+    "path": "/api/v1/alarm-config/companies/{companyId}/feeds/{id}"
+  },
+  {
+    "id": "015",
+    "method": "POST",
+    "path": "/api/v1/alarm-ingestion/preview"
+  },
+  {
+    "id": "016",
+    "method": "POST",
+    "path": "/api/v1/alarm-workflow/companies/{companyId}/feeds/{feedId}/imports"
+  },
+  {
+    "id": "017",
+    "method": "GET",
+    "path": "/api/v1/alarm-workflow/companies/{companyId}/imports"
+  },
+  {
+    "id": "018",
+    "method": "GET",
+    "path": "/api/v1/alarm-workflow/companies/{companyId}/imports/{id}"
+  },
+  {
+    "id": "019",
+    "method": "POST",
+    "path": "/api/v1/alarm-workflow/companies/{companyId}/imports/{id}/retry"
+  },
+  {
+    "id": "020",
+    "method": "POST",
+    "path": "/api/v1/alarm-workflow/companies/{companyId}/imports/{id}/replace"
+  },
+  {
+    "id": "021",
+    "method": "GET",
+    "path": "/api/v1/alarm-workflow/companies/{companyId}/imports/{id}/observations"
+  },
+  {
+    "id": "022",
+    "method": "GET",
+    "path": "/api/v1/alarm-workflow/companies/{companyId}/dashboard"
+  },
+  {
+    "id": "023",
+    "method": "GET",
+    "path": "/api/v1/alarm-workflow/companies/{companyId}/catalogue"
+  },
+  {
+    "id": "024",
+    "method": "POST",
+    "path": "/api/v1/alarm-workflow/companies/{companyId}/catalogue"
+  },
+  {
+    "id": "025",
+    "method": "DELETE",
+    "path": "/api/v1/alarm-workflow/companies/{companyId}/catalogue/{id}"
+  },
+  {
+    "id": "026",
+    "method": "GET",
+    "path": "/api/v1/alarm-workflow/companies/{companyId}/feeds/{id}/sites"
+  },
+  {
+    "id": "027",
+    "method": "POST",
+    "path": "/api/v1/alarm-workflow/companies/{companyId}/feeds/{id}/sites"
+  },
+  {
+    "id": "028",
+    "method": "DELETE",
+    "path": "/api/v1/alarm-workflow/companies/{companyId}/feeds/{id}/sites/{siteId}"
+  },
+  {
+    "id": "029",
+    "method": "GET",
+    "path": "/api/v1/alarm-workflow/companies/{companyId}/imports/{id}/report/{format}"
+  },
+  {
+    "id": "030",
+    "method": "GET",
+    "path": "/api/v1/alarm-workflow/companies/{companyId}/dashboard/report/{format}"
+  },
+  {
+    "id": "031",
+    "method": "GET",
+    "path": "/api/v1/alarm-workflow/companies/{companyId}/feeds/{id}/alarms/{key}/history"
+  },
+  {
+    "id": "032",
+    "method": "POST",
+    "path": "/api/v1/alarm-workflow/companies/{companyId}/feeds/{id}/alarms/{key}/events"
+  },
+  {
+    "id": "033",
+    "method": "GET",
+    "path": "/api/v1/alarm-workflow/companies/{companyId}/automation"
+  },
+  {
+    "id": "034",
+    "method": "PUT",
+    "path": "/api/v1/alarm-workflow/companies/{companyId}/automation"
+  },
+  {
+    "id": "035",
+    "method": "GET",
+    "path": "/api/v1/alarm-workflow/companies/{companyId}/status"
+  },
+  {
+    "id": "036",
+    "method": "GET",
+    "path": "/api/v1/alarm-workflow/companies/{companyId}/deliveries"
+  },
+  {
+    "id": "037",
+    "method": "POST",
+    "path": "/api/v1/alarm-workflow/companies/{companyId}/deliveries/{id}/retry"
+  },
+  {
+    "id": "038",
+    "method": "POST",
+    "path": "/api/v1/alarm-workflow/companies/{companyId}/deliveries/{id}/reconcile"
+  },
+  {
+    "id": "039",
+    "method": "GET",
+    "path": "/api/v1/alarm-workflow/companies/{companyId}/deliveries/{id}/capture"
+  },
+  {
+    "id": "040",
+    "method": "POST",
+    "path": "/api/v1/auth/register"
+  },
+  {
+    "id": "041",
+    "method": "POST",
+    "path": "/api/v1/auth/login"
+  },
+  {
+    "id": "042",
+    "method": "POST",
+    "path": "/api/v1/auth/logout"
+  },
+  {
+    "id": "043",
+    "method": "POST",
+    "path": "/api/v1/reports"
+  },
+  {
+    "id": "044",
+    "method": "GET",
+    "path": "/api/v1/reports"
+  },
+  {
+    "id": "045",
+    "method": "GET",
+    "path": "/api/v1/reports/{id}"
+  },
+  {
+    "id": "046",
+    "method": "POST",
+    "path": "/api/v1/reports/{id}/retry"
+  },
+  {
+    "id": "047",
+    "method": "GET",
+    "path": "/api/v1/reports/{id}/download/{format}"
+  },
+  {
+    "id": "048",
+    "method": "GET",
+    "path": "/api/v1/companies"
+  },
+  {
+    "id": "049",
+    "method": "GET",
+    "path": "/api/v1/companies/{id}"
+  },
+  {
+    "id": "050",
+    "method": "POST",
+    "path": "/api/v1/companies"
+  },
+  {
+    "id": "051",
+    "method": "PUT",
+    "path": "/api/v1/companies/{id}"
+  },
+  {
+    "id": "052",
+    "method": "PATCH",
+    "path": "/api/v1/companies/{id}/block"
+  },
+  {
+    "id": "053",
+    "method": "PUT",
+    "path": "/api/v1/daily-analysis/profile"
+  },
+  {
+    "id": "054",
+    "method": "GET",
+    "path": "/api/v1/daily-analysis/profile"
+  },
+  {
+    "id": "055",
+    "method": "POST",
+    "path": "/api/v1/daily-analysis/snapshots"
+  },
+  {
+    "id": "056",
+    "method": "GET",
+    "path": "/api/v1/daily-analysis/snapshots"
+  },
+  {
+    "id": "057",
+    "method": "GET",
+    "path": "/api/v1/daily-analysis/snapshots/{id}"
+  },
+  {
+    "id": "058",
+    "method": "GET",
+    "path": "/api/v1/daily-analysis/snapshots/{id}/comparisons"
+  },
+  {
+    "id": "059",
+    "method": "POST",
+    "path": "/api/v1/daily-analysis/snapshots/{id}/retry"
+  },
+  {
+    "id": "060",
+    "method": "GET",
+    "path": "/api/v1/dashboard/stats"
+  },
+  {
+    "id": "061",
+    "method": "GET",
+    "path": "/api/v1/dashboard/stats/cells"
+  },
+  {
+    "id": "062",
+    "method": "GET",
+    "path": "/api/v1/dashboard/stats/sites"
+  },
+  {
+    "id": "063",
+    "method": "GET",
+    "path": "/api/v1/dashboard/stats/bands"
+  },
+  {
+    "id": "064",
+    "method": "GET",
+    "path": "/api/v1/dashboard/stats/tech"
+  },
+  {
+    "id": "065",
+    "method": "GET",
+    "path": "/api/v1/dashboard/stats/sectors"
+  },
+  {
+    "id": "066",
+    "method": "GET",
+    "path": "/api/v1/dashboard/stats/groups"
+  },
+  {
+    "id": "067",
+    "method": "GET",
+    "path": "/api/v1/dashboard/stats/detailed"
+  },
+  {
+    "id": "068",
+    "method": "GET",
+    "path": "/api/v1/dashboard/performance"
+  },
+  {
+    "id": "069",
+    "method": "GET",
+    "path": "/api/v1/health"
+  },
+  {
+    "id": "070",
+    "method": "GET",
+    "path": "/api/v1/alarms/rules"
+  },
+  {
+    "id": "071",
+    "method": "POST",
+    "path": "/api/v1/alarms/rules"
+  },
+  {
+    "id": "072",
+    "method": "PUT",
+    "path": "/api/v1/alarms/rules/{id}"
+  },
+  {
+    "id": "073",
+    "method": "DELETE",
+    "path": "/api/v1/alarms/rules/{id}"
+  },
+  {
+    "id": "074",
+    "method": "POST",
+    "path": "/api/v1/alarms/generate"
+  },
+  {
+    "id": "075",
+    "method": "GET",
+    "path": "/api/v1/alarms/summary"
+  },
+  {
+    "id": "076",
+    "method": "GET",
+    "path": "/api/v1/alarms"
+  },
+  {
+    "id": "077",
+    "method": "POST",
+    "path": "/api/v1/alarms/{id}/acknowledge"
+  },
+  {
+    "id": "078",
+    "method": "POST",
+    "path": "/api/v1/alarms/{id}/resolve"
+  },
+  {
+    "id": "079",
+    "method": "GET",
+    "path": "/api/v1/kpi/available-metrics"
+  },
+  {
+    "id": "080",
+    "method": "GET",
+    "path": "/api/v1/kpi/all"
+  },
+  {
+    "id": "081",
+    "method": "GET",
+    "path": "/api/v1/kpi/ul-prb-utilization"
+  },
+  {
+    "id": "082",
+    "method": "GET",
+    "path": "/api/v1/kpi/dl-prb-utilization"
+  },
+  {
+    "id": "083",
+    "method": "GET",
+    "path": "/api/v1/kpi/data-volume"
+  },
+  {
+    "id": "084",
+    "method": "GET",
+    "path": "/api/v1/kpi/ul-throughput"
+  },
+  {
+    "id": "085",
+    "method": "GET",
+    "path": "/api/v1/kpi/dl-throughput"
+  },
+  {
+    "id": "086",
+    "method": "GET",
+    "path": "/api/v1/kpi/erab-drop-rate"
+  },
+  {
+    "id": "087",
+    "method": "GET",
+    "path": "/api/v1/kpi/erab-success-rate"
+  },
+  {
+    "id": "088",
+    "method": "GET",
+    "path": "/api/v1/kpi/rrc-success-rate"
+  },
+  {
+    "id": "089",
+    "method": "GET",
+    "path": "/api/v1/kpi/mean-rrc-users"
+  },
+  {
+    "id": "090",
+    "method": "GET",
+    "path": "/api/v1/kpi/max-rrc-users"
+  },
+  {
+    "id": "091",
+    "method": "GET",
+    "path": "/api/v1/kpi/erab-setup-rate"
+  },
+  {
+    "id": "092",
+    "method": "GET",
+    "path": "/api/v1/kpi/rrc-drop-rate"
+  },
+  {
+    "id": "093",
+    "method": "GET",
+    "path": "/api/v1/kpi/volte-cssr"
+  },
+  {
+    "id": "094",
+    "method": "GET",
+    "path": "/api/v1/kpi/volte-dcr"
+  },
+  {
+    "id": "095",
+    "method": "GET",
+    "path": "/api/v1/kpi/inter-freq-hosr"
+  },
+  {
+    "id": "096",
+    "method": "GET",
+    "path": "/api/v1/kpi/intra-freq-hosr"
+  },
+  {
+    "id": "097",
+    "method": "GET",
+    "path": "/api/v1/kpi/csfb-success-rate"
+  },
+  {
+    "id": "098",
+    "method": "GET",
+    "path": "/api/v1/kpi/dynamic/metrics"
+  },
+  {
+    "id": "099",
+    "method": "GET",
+    "path": "/api/v1/kpi/dynamic/summary"
+  },
+  {
+    "id": "100",
+    "method": "GET",
+    "path": "/api/v1/kpi/dynamic/columns"
+  },
+  {
+    "id": "101",
+    "method": "GET",
+    "path": "/api/v1/kpi/dynamic/data"
+  },
+  {
+    "id": "102",
+    "method": "GET",
+    "path": "/api/v1/kpi/dynamic/batch-data"
+  },
+  {
+    "id": "103",
+    "method": "POST",
+    "path": "/api/v1/kpi/dynamic/selection"
+  },
+  {
+    "id": "104",
+    "method": "POST",
+    "path": "/api/v1/kpi/dynamic/bad-days"
+  },
+  {
+    "id": "105",
+    "method": "POST",
+    "path": "/api/v1/kpi/dynamic/export"
+  },
+  {
+    "id": "106",
+    "method": "POST",
+    "path": "/api/v1/ingestion/kpi"
+  },
+  {
+    "id": "107",
+    "method": "GET",
+    "path": "/api/v1/ingestion/runs"
+  },
+  {
+    "id": "108",
+    "method": "GET",
+    "path": "/api/v1/ingestion/runs/{id}"
+  },
+  {
+    "id": "109",
+    "method": "POST",
+    "path": "/api/v1/ingestion/runs/{id}/retry"
+  },
+  {
+    "id": "110",
+    "method": "GET",
+    "path": "/api/v1/threshold-rules"
+  },
+  {
+    "id": "111",
+    "method": "POST",
+    "path": "/api/v1/threshold-rules"
+  },
+  {
+    "id": "112",
+    "method": "PUT",
+    "path": "/api/v1/threshold-rules/{id}"
+  },
+  {
+    "id": "113",
+    "method": "DELETE",
+    "path": "/api/v1/threshold-rules/{id}"
+  },
+  {
+    "id": "114",
+    "method": "GET",
+    "path": "/api/v1/threshold-rules/evaluate"
+  },
+  {
+    "id": "115",
+    "method": "GET",
+    "path": "/api/v1/threshold-rules/evaluate-file"
+  },
+  {
+    "id": "116",
+    "method": "POST",
+    "path": "/api/v1/threshold-rules/ensure-file"
+  },
+  {
+    "id": "117",
+    "method": "GET",
+    "path": "/api/v1/threshold-rules/results"
+  },
+  {
+    "id": "118",
+    "method": "GET",
+    "path": "/api/v1/threshold-rules/results/{fileId}"
+  },
+  {
+    "id": "119",
+    "method": "GET",
+    "path": "/api/v1/kpi/validation-report/{fileId}"
+  },
+  {
+    "id": "120",
+    "method": "GET",
+    "path": "/api/v1/licenses"
+  },
+  {
+    "id": "121",
+    "method": "GET",
+    "path": "/api/v1/licenses/{id}"
+  },
+  {
+    "id": "122",
+    "method": "POST",
+    "path": "/api/v1/licenses"
+  },
+  {
+    "id": "123",
+    "method": "PATCH",
+    "path": "/api/v1/licenses/{id}/renew"
+  },
+  {
+    "id": "124",
+    "method": "PATCH",
+    "path": "/api/v1/licenses/{id}/block"
+  },
+  {
+    "id": "125",
+    "method": "GET",
+    "path": "/api/v1/licenses/{id}/download"
+  },
+  {
+    "id": "126",
+    "method": "POST",
+    "path": "/api/v1/local-license/upload"
+  },
+  {
+    "id": "127",
+    "method": "GET",
+    "path": "/api/v1/local-license/status"
+  },
+  {
+    "id": "128",
+    "method": "GET",
+    "path": "/api/v1/local-license/device-id"
+  },
+  {
+    "id": "129",
+    "method": "GET",
+    "path": "/api/v1/nightly/profile"
+  },
+  {
+    "id": "130",
+    "method": "PUT",
+    "path": "/api/v1/nightly/profile"
+  },
+  {
+    "id": "131",
+    "method": "POST",
+    "path": "/api/v1/nightly/runs"
+  },
+  {
+    "id": "132",
+    "method": "GET",
+    "path": "/api/v1/nightly/runs"
+  },
+  {
+    "id": "133",
+    "method": "GET",
+    "path": "/api/v1/nightly/runs/{id}"
+  },
+  {
+    "id": "134",
+    "method": "POST",
+    "path": "/api/v1/nightly/runs/{id}/retry"
+  },
+  {
+    "id": "135",
+    "method": "GET",
+    "path": "/api/v1/pci/analysis"
+  },
+  {
+    "id": "136",
+    "method": "POST",
+    "path": "/api/v1/kpi/recommendation/jobs"
+  },
+  {
+    "id": "137",
+    "method": "GET",
+    "path": "/api/v1/kpi/recommendation/jobs/{jobId}"
+  },
+  {
+    "id": "138",
+    "method": "POST",
+    "path": "/api/v1/kpi/recommendation/run"
+  },
+  {
+    "id": "139",
+    "method": "POST",
+    "path": "/api/v1/kpi/recommendation/export"
+  },
+  {
+    "id": "140",
+    "method": "GET",
+    "path": "/api/v1/kpi/recommendation/presets"
+  },
+  {
+    "id": "141",
+    "method": "POST",
+    "path": "/api/v1/kpi/recommendation/presets"
+  },
+  {
+    "id": "142",
+    "method": "GET",
+    "path": "/api/v1/kpi/recommendation/presets/{name}"
+  },
+  {
+    "id": "143",
+    "method": "POST",
+    "path": "/api/v1/rca-exports"
+  },
+  {
+    "id": "144",
+    "method": "GET",
+    "path": "/api/v1/rca-exports/{id}"
+  },
+  {
+    "id": "145",
+    "method": "GET",
+    "path": "/api/v1/rca-exports/{id}/download"
+  },
+  {
+    "id": "146",
+    "method": "GET",
+    "path": "/api/v1/report-datasets"
+  },
+  {
+    "id": "147",
+    "method": "PUT",
+    "path": "/api/v1/report-mail/profile"
+  },
+  {
+    "id": "148",
+    "method": "GET",
+    "path": "/api/v1/report-mail/profile"
+  },
+  {
+    "id": "149",
+    "method": "POST",
+    "path": "/api/v1/report-mail/deliveries"
+  },
+  {
+    "id": "150",
+    "method": "GET",
+    "path": "/api/v1/report-mail/deliveries"
+  },
+  {
+    "id": "151",
+    "method": "GET",
+    "path": "/api/v1/report-mail/deliveries/{id}"
+  },
+  {
+    "id": "152",
+    "method": "POST",
+    "path": "/api/v1/report-mail/deliveries/{id}/retry"
+  },
+  {
+    "id": "153",
+    "method": "POST",
+    "path": "/api/v1/report-mail/deliveries/{id}/cancel"
+  },
+  {
+    "id": "154",
+    "method": "POST",
+    "path": "/api/v1/report-mail/deliveries/{id}/reconcile"
+  },
+  {
+    "id": "155",
+    "method": "GET",
+    "path": "/api/v1/report-mail/deliveries/{id}/message.eml"
+  },
+  {
+    "id": "156",
+    "method": "GET",
+    "path": "/api/v1/setting/getsettings"
+  },
+  {
+    "id": "157",
+    "method": "POST",
+    "path": "/api/v1/setting/updateSetting"
+  },
+  {
+    "id": "158",
+    "method": "POST",
+    "path": "/api/v1/setting/thresholds/export"
+  },
+  {
+    "id": "159",
+    "method": "POST",
+    "path": "/api/v1/setting/thresholds/import"
+  },
+  {
+    "id": "160",
+    "method": "GET",
+    "path": "/api/v1/sites/summary"
+  },
+  {
+    "id": "161",
+    "method": "GET",
+    "path": "/api/v1/sites/worst"
+  },
+  {
+    "id": "162",
+    "method": "GET",
+    "path": "/api/v1/sites/details"
+  },
+  {
+    "id": "163",
+    "method": "GET",
+    "path": "/api/v1/sites/intelligence"
+  },
+  {
+    "id": "164",
+    "method": "GET",
+    "path": "/api/v1/site-prediction/recommendations"
+  },
+  {
+    "id": "165",
+    "method": "GET",
+    "path": "/api/v1/site-prediction/summary"
+  },
+  {
+    "id": "166",
+    "method": "POST",
+    "path": "/api/v1/site-prediction/lb-wcf"
+  },
+  {
+    "id": "167",
+    "method": "POST",
+    "path": "/api/v1/upload/upload"
+  },
+  {
+    "id": "168",
+    "method": "POST",
+    "path": "/api/v1/upload/kpi"
+  },
+  {
+    "id": "169",
+    "method": "GET",
+    "path": "/api/v1/upload/jobs/{jobId}"
+  },
+  {
+    "id": "170",
+    "method": "GET",
+    "path": "/api/v1/upload/jobs"
+  },
+  {
+    "id": "171",
+    "method": "POST",
+    "path": "/api/v1/upload/jobs/{jobId}/retry"
+  },
+  {
+    "id": "172",
+    "method": "POST",
+    "path": "/api/v1/upload/kpi/preview"
+  },
+  {
+    "id": "173",
+    "method": "POST",
+    "path": "/api/v1/upload/site"
+  },
+  {
+    "id": "174",
+    "method": "POST",
+    "path": "/api/v1/upload/alarm"
+  },
+  {
+    "id": "175",
+    "method": "GET",
+    "path": "/api/v1/upload/uploads"
+  },
+  {
+    "id": "176",
+    "method": "DELETE",
+    "path": "/api/v1/upload/uploads/{id}"
+  },
+  {
+    "id": "177",
+    "method": "GET",
+    "path": "/api/v1/upload/network-data"
+  },
+  {
+    "id": "178",
+    "method": "GET",
+    "path": "/api/v1/upload/uploads/history"
+  },
+  {
+    "id": "179",
+    "method": "GET",
+    "path": "/api/v1/upload/history"
+  },
+  {
+    "id": "180",
+    "method": "GET",
+    "path": "/api/v1/upload/site-data"
+  },
+  {
+    "id": "181",
+    "method": "GET",
+    "path": "/api/v1/upload/alarm-data"
+  },
+  {
+    "id": "182",
+    "method": "GET",
+    "path": "/api/v1/users"
+  },
+  {
+    "id": "183",
+    "method": "POST",
+    "path": "/api/v1/users"
+  },
+  {
+    "id": "184",
+    "method": "GET",
+    "path": "/api/v1/kpi/worst-cells"
+  },
+  {
+    "id": "185",
+    "method": "GET",
+    "path": "/api/v1/kpi/worst-sites"
+  },
+  {
+    "id": "186",
+    "method": "GET",
+    "path": "/api/v1/kpi/worst-cells/detail"
+  }
+]

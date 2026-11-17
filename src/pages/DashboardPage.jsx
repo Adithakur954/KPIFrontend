@@ -1,5 +1,4 @@
 import PageHeading from "@/shared/components/common/PageHeading";
-import OverviewPanel from "@/features/dashboard/components/OverviewPanel";
 import InventoryCard from "@/features/dashboard/components/InventoryCard";
 import { useEffect, useState, useRef, useCallback, useContext } from "react";
 import {
@@ -947,13 +946,6 @@ export default function DashboardPage() {
     importingThresholds ||
     (Boolean(selectedDashboardFileId) && dynamicPerformanceLoading);
 
-  const overviewEntries = selectedDashboardFileId
-    ? dynamicPerformanceEntries
-    : Object.entries({ ...(performanceData?.averages || {}), ...(performanceData?.peaks || {}) }).map(([key, value]) => ({ key, value }));
-  const evaluatedEntries = overviewEntries.filter(entry => (!selectedDashboardFileId || entry.count > 0) && entry.value !== null && entry.value !== "" && Number.isFinite(Number(entry.value)) && getMetricStatus(entry.key, entry.value).status !== "neutral");
-  const degradedCount = evaluatedEntries.filter(entry => getMetricStatus(entry.key, entry.value).status === "bad").length;
-  const scopedUpload = dashboardFileOptions.find(file => String(file.id) === String(selectedDashboardFileId));
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
       <PageHeading title="Network Dashboard" eyebrow="Monitoring / Overview" description="Network performance, thresholds and upload overview" icon={Activity} actions={<>
@@ -1041,29 +1033,6 @@ export default function DashboardPage() {
       </>} />
 
       <div className="max-w-[1800px] mx-auto px-4 py-4 space-y-8">
-        <div className="bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-700">
-          Data scope:{" "}
-          <span className="font-semibold">
-            {isSuperAdmin
-              ? selectedCompanyId
-                ? companies.find((company) => String(company.id) === String(selectedCompanyId))?.companyName || `Company ${selectedCompanyId}`
-                : "All companies"
-              : user?.companyId
-                ? `Company ${user.companyId}`
-                : "Assigned company"}
-            {" / "}
-            {selectedDashboardFileId
-              ? `File #${selectedDashboardFileId} - ${
-                  dashboardFileOptions.find(
-                    (file) =>
-                      String(file.id) === String(selectedDashboardFileId),
-                  )?.fileName || "Selected upload"
-                }`
-              : "All KPI uploads"}
-          </span>
-        </div>
-
-        <OverviewPanel loading={loading || dynamicPerformanceLoading} evaluatedCount={evaluatedEntries.length} degradedCount={degradedCount} upload={scopedUpload} />
 
         <div className="portal-inventory-grid">
           {metricList.map((metric, index) => <InventoryCard key={metric.label} label={metric.label} value={metric.value} icon={icons[index]} loading={loading} />)}

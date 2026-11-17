@@ -17,13 +17,7 @@ const LoginPage = lazy(() => import("@/pages/LoginPage"));
 const AdminManagementPage = lazy(() => import("@/pages/AdminManagementPage"));
 const LocalLicensePage = lazy(() => import("@/pages/LocalLicensePage"));
 const ReportsPage = lazy(() => import("@/pages/ReportsPage"));
-import { useAuth } from "@/shared/context/AuthContext";
-
-function RequireRole({ allowedRoles, children }) {
-  const { user } = useAuth();
-  const role = String(user?.role || "USER").toUpperCase();
-  return allowedRoles.includes(role) ? children : <Navigate to="/" replace />;
-}
+const KpiIngestionPage = lazy(() => import("@/pages/KpiIngestionPage"));
 
 export default function AppRoutes() {
   return (
@@ -38,18 +32,19 @@ export default function AppRoutes() {
         <Route path="/reports" element={<ReportsPage />} />
         <Route path="/alarm-operations" element={<AlarmWorkspacePage />} />
         <Route path="/map" element={<MapPage />} />
-        <Route path="/worstcell" element={<RequireRole allowedRoles={["SUPER_ADMIN", "ADMIN"]}><WorstCell /></RequireRole>} />
-        <Route path="/recommendation" element={<RequireRole allowedRoles={["SUPER_ADMIN", "ADMIN"]}><RcaPage /></RequireRole>} />
-        <Route path="/uploads" element={<RequireRole allowedRoles={["SUPER_ADMIN", "ADMIN"]}><UploadsPage /></RequireRole>} />
-        <Route path="/alarms" element={<RequireRole allowedRoles={["SUPER_ADMIN", "ADMIN"]}><AlarmsPage /></RequireRole>} />
-        <Route path="/sites" element={<RequireRole allowedRoles={["SUPER_ADMIN", "ADMIN"]}><SitesPage /></RequireRole>} />
-        <Route path="/threshold-rules" element={<RequireRole allowedRoles={["SUPER_ADMIN", "ADMIN"]}><ThresholdRulesPage /></RequireRole>} />
-        <Route path="/validation-report" element={<RequireRole allowedRoles={["SUPER_ADMIN", "ADMIN"]}><ValidationReportPage /></RequireRole>} />
-        <Route path="/local-license" element={<RequireRole allowedRoles={["SUPER_ADMIN", "ADMIN"]}><LocalLicensePage /></RequireRole>} />
-        <Route path="/admin" element={<RequireRole allowedRoles={["SUPER_ADMIN"]}><AdminManagementPage /></RequireRole>} />
-        <Route path="/companies" element={<RequireRole allowedRoles={["SUPER_ADMIN"]}><AdminManagementPage /></RequireRole>} />
-        <Route path="/licenses" element={<RequireRole allowedRoles={["SUPER_ADMIN"]}><AdminManagementPage /></RequireRole>} />
-        <Route path="/accounts" element={<RequireRole allowedRoles={["SUPER_ADMIN"]}><AdminManagementPage /></RequireRole>} />
+        <Route path="/worstcell" element={<WorstCell />} />
+        <Route path="/recommendation" element={<RcaPage />} />
+        <Route path="/uploads" element={<UploadsPage />} />
+        <Route path="/kpi-ingestion" element={<KpiIngestionPage />} />
+        <Route path="/alarms" element={<AlarmsPage />} />
+        <Route path="/sites" element={<SitesPage />} />
+        <Route path="/threshold-rules" element={<ThresholdRulesPage />} />
+        <Route path="/validation-report" element={<ValidationReportPage />} />
+        <Route path="/local-license" element={<LocalLicensePage />} />
+        <Route path="/admin" element={<AdminManagementPage />} />
+        <Route path="/companies" element={<AdminManagementPage />} />
+        <Route path="/licenses" element={<AdminManagementPage />} />
+        <Route path="/accounts" element={<AdminManagementPage />} />
       </Route>
 
       {/* Catch-all redirect to home */}

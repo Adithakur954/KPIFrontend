@@ -1,5 +1,5 @@
-import { apiFetch } from "@/shared/api/apiClient";
+import { callBackendApi } from "@/shared/api/backendApiService";
 
 export async function fetchBackendHealth() {
-  return apiFetch("health");
+  return callBackendApi("API-069");
 }

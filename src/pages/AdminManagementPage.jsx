@@ -26,6 +26,8 @@ import {
   fetchLicenses,
 } from "@/shared/api/licenseService";
 import { createUserAccount, fetchUsers } from "@/shared/api/userService";
+import { useAuth } from "@/shared/context/AuthContext";
+import { fetchLocalLicenseStatus } from "@/shared/api/localLicenseService";
 
 const tabs = [
   { id: "companies", label: "Companies", icon: Building2 },
@@ -79,6 +81,9 @@ function downloadBlob(blob, fileName) {
 }
 
 export default function AdminManagementPage() {
+  const { user } = useAuth();
+  const isSuperAdmin = normalize(user?.role, "USER") === "SUPER_ADMIN";
+  const [licenseStatus, setLicenseStatus] = useState(null);
   const [activeTab, setActiveTab] = useState("companies");
   const [companies, setCompanies] = useState([]);
   const [licenses, setLicenses] = useState([]);
@@ -106,8 +111,9 @@ export default function AdminManagementPage() {
   }, [companies, licenses, users]);
 
   useEffect(() => {
-    loadAll();
-  }, []);
+    if (isSuperAdmin) loadAll();
+    else loadCurrentLicense();
+  }, [isSuperAdmin]);
 
   function showMessage(text, type = "success") {
     setMessage(text);
@@ -116,6 +122,13 @@ export default function AdminManagementPage() {
       setMessage("");
       setMessageType("");
     }, 3500);
+  }
+
+  async function loadCurrentLicense() {
+    setLoading(true);
+    const response = await fetchLocalLicenseStatus();
+    setLicenseStatus(response?.success ? response.data : { valid: false, message: response?.message || "License status unavailable." });
+    setLoading(false);
   }
 
   async function loadAll() {
@@ -265,6 +278,64 @@ export default function AdminManagementPage() {
 
   const activeCompanies = companies.filter((company) => normalize(company.status) === "ACTIVE");
 
+  if (!isSuperAdmin) {
+    const license = licenseStatus?.license || {};
+    const licenseDetails = [
+      ["Company", license.companyName],
+      ["Plan", license.plan],
+      ["Expires", license.expiresAt],
+      ["User limit", license.maxUsers],
+    ].filter(([, value]) => value !== undefined && value !== null && value !== "");
+
+    return (
+      <div className="min-h-screen bg-slate-50 px-4 py-8">
+        <div className="mx-auto max-w-4xl space-y-6">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-wide text-blue-700">Account</p>
+            <h1 className="mt-1 text-3xl font-semibold text-slate-900">License Information</h1>
+            <p className="mt-1 text-sm text-slate-600">Review the active license for this device.</p>
+          </div>
+
+          <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-blue-50 text-blue-700">
+                  <ShieldCheck className="h-5 w-5" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-semibold text-slate-900">Active License</h2>
+                  <p className="text-sm text-slate-500">{loading ? "Checking license status..." : licenseStatus?.message || "License status unavailable."}</p>
+                </div>
+              </div>
+              <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${licenseStatus?.valid ? "border-emerald-100 bg-emerald-50 text-emerald-700" : "border-amber-100 bg-amber-50 text-amber-800"}`}>
+                {loading ? "CHECKING" : licenseStatus?.valid ? "ACTIVE" : "NOT ACTIVE"}
+              </span>
+            </div>
+
+            {licenseDetails.length > 0 && (
+              <dl className="mt-6 grid gap-4 border-t border-slate-100 pt-5 sm:grid-cols-2">
+                {licenseDetails.map(([label, value]) => (
+                  <div key={label}>
+                    <dt className="text-xs font-semibold uppercase tracking-wide text-slate-400">{label}</dt>
+                    <dd className="mt-1 font-medium text-slate-800">{value}</dd>
+                  </div>
+                ))}
+              </dl>
+            )}
+
+            <div className="mt-6 rounded-lg border border-blue-100 bg-blue-50 p-4 text-sm text-blue-900">
+              For more information about your license, renewals, or account features, please contact Vinfocom.
+            </div>
+
+            <button type="button" onClick={loadCurrentLicense} disabled={loading} className="mt-5 inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60">
+              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+              Refresh license
+            </button>
+          </section>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-8">
       <div className="mx-auto max-w-7xl space-y-6">
