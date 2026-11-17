@@ -17,7 +17,6 @@ const LoginPage = lazy(() => import("@/pages/LoginPage"));
 const AdminManagementPage = lazy(() => import("@/pages/AdminManagementPage"));
 const LocalLicensePage = lazy(() => import("@/pages/LocalLicensePage"));
 const ReportsPage = lazy(() => import("@/pages/ReportsPage"));
-const KpiIngestionPage = lazy(() => import("@/pages/KpiIngestionPage"));
 
 export default function AppRoutes() {
   return (
@@ -35,7 +34,6 @@ export default function AppRoutes() {
         <Route path="/worstcell" element={<WorstCell />} />
         <Route path="/recommendation" element={<RcaPage />} />
         <Route path="/uploads" element={<UploadsPage />} />
-        <Route path="/kpi-ingestion" element={<KpiIngestionPage />} />
         <Route path="/alarms" element={<AlarmsPage />} />
         <Route path="/sites" element={<SitesPage />} />
         <Route path="/threshold-rules" element={<ThresholdRulesPage />} />

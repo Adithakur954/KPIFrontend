@@ -1,5 +1,5 @@
 import {
-  LayoutDashboard, BarChart3, Map, AlertTriangle, Lightbulb, Upload, Bell, Activity,
+  LayoutDashboard, BarChart3, Map, AlertTriangle, Lightbulb, Upload, Bell,
   Radio, SlidersHorizontal, FileCheck, FileBarChart, UserPlus, ShieldCheck,
 } from "lucide-react";
 
@@ -21,7 +21,6 @@ export const portalNavigation = [
   ] },
   { label: "Administration", items: [
     { to: "/uploads", label: "Uploads", description: "Import data and inspect processing history", icon: Upload },
-    { to: "/kpi-ingestion", label: "KPI Ingestion", description: "Submit tracked KPI ingestion runs and monitor processing", icon: Activity },
     { to: "/sites", label: "Sites", description: "Explore site inventory and analytics", icon: Radio },
     { to: "/threshold-rules", label: "Threshold Rules", description: "Configure KPI limits and operators", icon: SlidersHorizontal },
     { to: "/local-license", label: "Local License", description: "Inspect local license status", icon: ShieldCheck },
