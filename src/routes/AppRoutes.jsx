@@ -7,7 +7,6 @@ const MapPage = lazy(() => import("@/pages/MapPage"));
 const UploadsPage = lazy(() => import("@/pages/UploadsPage"));
 const WorstCell = lazy(() => import("@/pages/WorstCell"));
 const AlarmsPage = lazy(() => import("@/pages/AlarmsPage"));
-const AlarmWorkspacePage = lazy(() => import("@/pages/AlarmWorkspacePage"));
 const SitesPage = lazy(() => import("@/pages/SitesPage"));
 const KpiView = lazy(() => import("@/pages/KpiView"));
 const RcaPage = lazy(() => import("@/pages/RecommendationPage"));
@@ -29,7 +28,6 @@ export default function AppRoutes() {
         <Route path="/" element={<DashboardPage />} />
         <Route path="/kpi" element={<KpiView />} />
         <Route path="/reports" element={<ReportsPage />} />
-        <Route path="/alarm-operations" element={<AlarmWorkspacePage />} />
         <Route path="/map" element={<MapPage />} />
         <Route path="/worstcell" element={<WorstCell />} />
         <Route path="/recommendation" element={<RcaPage />} />

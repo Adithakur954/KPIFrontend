@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   Bell,
@@ -20,6 +20,8 @@ import {
   resolveKpiAlarm,
 } from "@/features/alarms/services/alarmsService";
 import { useAuth } from "@/shared/context/AuthContext";
+
+const NativeAlarmSummary = lazy(() => import("@/features/alarms/components/NativeAlarmSummary"));
 
 const severityClasses = {
   CRITICAL: "border-red-200 bg-red-50 text-red-700",
@@ -98,25 +100,10 @@ export default function AlarmsPage() {
   const [status, setStatus] = useState("");
   const [search, setSearch] = useState("");
   const [uploadedSearch, setUploadedSearch] = useState("");
+  const [uploadedQuery, setUploadedQuery] = useState("");
   const [selectedAlarm, setSelectedAlarm] = useState(null);
   const [message, setMessage] = useState("");
   const [uploadedMessage, setUploadedMessage] = useState("");
-
-  useEffect(() => {
-    loadUploads();
-  }, []);
-
-  useEffect(() => {
-    if (selectedFileId) {
-      loadAlarmData();
-    }
-  }, [selectedFileId, severity, status]);
-
-  useEffect(() => {
-    if (selectedAlarmFileId || viewMode === "uploaded") {
-      loadUploadedAlarmData();
-    }
-  }, [selectedAlarmFileId, uploadedSeverity]);
 
   const filteredAlarms = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -135,23 +122,23 @@ export default function AlarmsPage() {
     );
   }, [alarms, search]);
 
-  const loadUploads = async () => {
+  const loadUploads = useCallback(async () => {
     const response = await fetchUploads();
     const rows = response?.success && Array.isArray(response.data) ? response.data : [];
     const kpiUploads = rows.filter(isKpiUpload);
     const rawAlarmUploads = rows.filter(isAlarmUpload);
     setUploads(kpiUploads);
     setAlarmUploads(rawAlarmUploads);
-    if (!selectedFileId && kpiUploads.length > 0) {
-      setSelectedFileId(String(kpiUploads[0].id));
+    if (kpiUploads.length > 0) {
+      setSelectedFileId(current => current || String(kpiUploads[0].id));
     }
-    if (!selectedAlarmFileId && rawAlarmUploads.length > 0) {
-      setSelectedAlarmFileId(String(rawAlarmUploads[0].id));
-      setViewMode("uploaded");
+    if (rawAlarmUploads.length > 0) {
+      setSelectedAlarmFileId(current => current || String(rawAlarmUploads[0].id));
+      setViewMode(current => current === "generated" ? "uploaded" : current);
     }
-  };
+  }, []);
 
-  const loadAlarmData = async () => {
+  const loadAlarmData = useCallback(async () => {
     if (!selectedFileId) return;
     setLoading(true);
     setMessage("");
@@ -179,7 +166,7 @@ export default function AlarmsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedFileId, severity, status]);
 
   const handleGenerate = async () => {
     if (!selectedFileId) return;
@@ -194,14 +181,14 @@ export default function AlarmsPage() {
     }
   };
 
-  const loadUploadedAlarmData = async () => {
+  const loadUploadedAlarmData = useCallback(async () => {
     setLoadingUploaded(true);
     setUploadedMessage("");
     try {
       const response = await getAlarmData({
         fileId: selectedAlarmFileId || undefined,
         severity: uploadedSeverity,
-        search: uploadedSearch,
+        search: uploadedQuery,
         page: 1,
         limit: 200,
       });
@@ -216,7 +203,21 @@ export default function AlarmsPage() {
     } finally {
       setLoadingUploaded(false);
     }
+  }, [selectedAlarmFileId, uploadedSeverity, uploadedQuery]);
+
+  const applyUploadedSearch = () => {
+    const query = uploadedSearch.trim();
+    if (query === uploadedQuery) void loadUploadedAlarmData();
+    else setUploadedQuery(query);
   };
+
+  useEffect(() => { void loadUploads(); }, [loadUploads]);
+  useEffect(() => {
+    if (viewMode === "generated" && selectedFileId) void loadAlarmData();
+  }, [viewMode, selectedFileId, loadAlarmData]);
+  useEffect(() => {
+    if (viewMode === "uploaded") void loadUploadedAlarmData();
+  }, [viewMode, loadUploadedAlarmData]);
 
   const updateAlarmStatus = async (alarm, action) => {
     const remarks = window.prompt(`${action === "ack" ? "Acknowledge" : "Resolve"} remarks`, "");
@@ -269,24 +270,25 @@ export default function AlarmsPage() {
                 <Bell className="h-7 w-7" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold text-slate-950">KPI Alarm Dashboard</h1>
+                <h1 className="text-2xl font-bold text-slate-950">Alarm Monitoring</h1>
                 <p className="text-sm text-slate-500">
-                  Generated KPI breaches, status tracking, and engineer actions.
+                  OSS summaries, uploaded alarm evidence, and generated KPI breaches.
                 </p>
               </div>
             </div>
           </div>
-          <button
+          {viewMode !== "native" && <button
             onClick={viewMode === "uploaded" ? loadUploadedAlarmData : loadAlarmData}
             disabled={viewMode === "uploaded" ? loadingUploaded : loading || !selectedFileId}
             className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50"
           >
             <RefreshCw className={`h-4 w-4 ${(loading || loadingUploaded) ? "animate-spin" : ""}`} />
             Refresh
-          </button>
+          </button>}
         </div>
 
-        <div className="inline-flex rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
+        <div className="inline-flex flex-wrap gap-1 rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
+          <button type="button" onClick={() => setViewMode("native")} className={`rounded-lg px-4 py-2 text-sm font-semibold ${viewMode === "native" ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-slate-50"}`}>National &amp; Circle Summary</button>
           <button
             type="button"
             onClick={() => setViewMode("uploaded")}
@@ -303,7 +305,7 @@ export default function AlarmsPage() {
           </button>
         </div>
 
-        {viewMode === "uploaded" ? (
+        {viewMode === "native" ? <Suspense fallback={<div role="status" className="p-6 text-slate-600">Loading alarm summaries…</div>}><NativeAlarmSummary /></Suspense> : viewMode === "uploaded" ? (
           <>
             <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
               <div className="grid gap-4 lg:grid-cols-[1.4fr_0.7fr_1fr_auto]">
@@ -344,7 +346,7 @@ export default function AlarmsPage() {
                       value={uploadedSearch}
                       onChange={(event) => setUploadedSearch(event.target.value)}
                       onKeyDown={(event) => {
-                        if (event.key === "Enter") loadUploadedAlarmData();
+                        if (event.key === "Enter") applyUploadedSearch();
                       }}
                       placeholder="Search alarm data..."
                       className="w-full rounded-xl border border-slate-200 py-3 pl-10 pr-4 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
@@ -353,7 +355,7 @@ export default function AlarmsPage() {
                 </div>
                 <div className="flex items-end">
                   <button
-                    onClick={loadUploadedAlarmData}
+                    onClick={applyUploadedSearch}
                     disabled={loadingUploaded}
                     className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50"
                   >
