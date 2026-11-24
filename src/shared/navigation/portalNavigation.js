@@ -23,7 +23,7 @@ export const portalNavigation = [
     { to: "/sites", label: "Sites", description: "Explore site inventory and analytics", icon: Radio },
     { to: "/threshold-rules", label: "Threshold Rules", description: "Configure KPI limits and operators", icon: SlidersHorizontal },
     { to: "/local-license", label: "Local License", description: "Inspect local license status", icon: ShieldCheck },
-    { to: "/admin", label: "Admin Management", description: "Manage users and company access", icon: UserPlus },
+    { to: "/admin", label: "Admin Management", description: "Manage users and company access", icon: UserPlus, roles: ["SUPER_ADMIN"] },
   ] },
 ];
 

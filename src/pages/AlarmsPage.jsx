@@ -261,9 +261,9 @@ export default function AlarmsPage() {
   }, [uploadedAlarms, uploadedSearch]);
 
   return (
-    <div className="min-h-screen bg-slate-50 p-4 md:p-6 lg:p-8">
+    <div className="alarms-page min-h-screen bg-slate-50 p-4 md:p-6 lg:p-8">
       <div className="mx-auto max-w-[1500px] space-y-6">
-        <div className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm md:flex-row md:items-center md:justify-between">
+        <div className="alarm-page-heading flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm md:flex-row md:items-center md:justify-between">
           <div>
             <div className="flex items-center gap-3">
               <div className="rounded-xl bg-red-50 p-3 text-red-600">
@@ -287,7 +287,7 @@ export default function AlarmsPage() {
           </button>}
         </div>
 
-        <div className="inline-flex flex-wrap gap-1 rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
+        <div className="alarm-view-tabs inline-flex flex-wrap gap-1 rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
           <button type="button" onClick={() => setViewMode("native")} className={`rounded-lg px-4 py-2 text-sm font-semibold ${viewMode === "native" ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-slate-50"}`}>National &amp; Circle Summary</button>
           <button
             type="button"

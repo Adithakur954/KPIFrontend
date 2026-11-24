@@ -2,20 +2,21 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import { lazy } from "react";
 import PageBoundary from "@/shared/components/common/PageBoundary";
 import ProtectedRoute from "./ProtectedRoute";
-const DashboardPage = lazy(() => import("@/pages/DashboardPage"));
-const MapPage = lazy(() => import("@/pages/MapPage"));
-const UploadsPage = lazy(() => import("@/pages/UploadsPage"));
-const WorstCell = lazy(() => import("@/pages/WorstCell"));
-const AlarmsPage = lazy(() => import("@/pages/AlarmsPage"));
-const SitesPage = lazy(() => import("@/pages/SitesPage"));
-const KpiView = lazy(() => import("@/pages/KpiView"));
-const RcaPage = lazy(() => import("@/pages/RecommendationPage"));
-const ThresholdRulesPage = lazy(() => import("@/pages/ThresholdRulesPage"));
-const ValidationReportPage = lazy(() => import("@/pages/ValidationReportPage"));
-const LoginPage = lazy(() => import("@/pages/LoginPage"));
-const AdminManagementPage = lazy(() => import("@/pages/AdminManagementPage"));
-const LocalLicensePage = lazy(() => import("@/pages/LocalLicensePage"));
-const ReportsPage = lazy(() => import("@/pages/ReportsPage"));
+import { pageLoaders } from "./pageLoaders";
+const DashboardPage = lazy(pageLoaders.DashboardPage);
+const MapPage = lazy(pageLoaders.MapPage);
+const UploadsPage = lazy(pageLoaders.UploadsPage);
+const WorstCell = lazy(pageLoaders.WorstCell);
+const AlarmsPage = lazy(pageLoaders.AlarmsPage);
+const SitesPage = lazy(pageLoaders.SitesPage);
+const KpiView = lazy(pageLoaders.KpiView);
+const RcaPage = lazy(pageLoaders.RcaPage);
+const ThresholdRulesPage = lazy(pageLoaders.ThresholdRulesPage);
+const ValidationReportPage = lazy(pageLoaders.ValidationReportPage);
+const LoginPage = lazy(pageLoaders.LoginPage);
+const AdminManagementPage = lazy(pageLoaders.AdminManagementPage);
+const LocalLicensePage = lazy(pageLoaders.LocalLicensePage);
+const ReportsPage = lazy(pageLoaders.ReportsPage);
 
 export default function AppRoutes() {
   return (

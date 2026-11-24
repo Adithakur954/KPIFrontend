@@ -14,16 +14,13 @@
     "lint": "eslint .",
     "check:ui": "eslint src/shared/components/common src/shared/components/layout src/shared/navigation src/features/dashboard/components",
     "test:reports": "node --test src/features/reports/report.test.mjs",
-    "test:frontend": "node --test src/features/recommendation/utils/evidence.test.mjs src/features/reports/report.test.mjs src/shared/api/asyncWait.test.mjs src/shared/api/analyticsCache.test.mjs src/features/map/utils/mapData.test.mjs src/features/kpi/utils/chartData.test.mjs src/features/worst_cell/workers/worstCell.test.mjs",
+    "test:frontend": "node --test src/features/recommendation/utils/evidence.test.mjs src/features/reports/report.test.mjs src/shared/api/asyncWait.test.mjs src/shared/api/analyticsCache.test.mjs src/features/map/utils/mapData.test.mjs src/features/kpi/utils/chartData.test.mjs src/features/worst_cell/workers/worstCell.test.mjs src/shared/api/sharedRead.test.mjs src/shared/api/apiClient.test.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
     "@deck.gl/core": "^9.3.6",
     "@deck.gl/google-maps": "^9.3.6",
     "@deck.gl/layers": "^9.3.6",
-    "@emotion/react": "^11.14.0",
-    "@emotion/styled": "^11.14.1",
-    "@mui/material": "^7.3.5",
     "@react-google-maps/api": "^2.20.7",
     "html-to-image": "^1.11.13",
     "html2canvas": "^1.4.1",

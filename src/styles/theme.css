@@ -1,0 +1,154 @@
+/* Shared visual tokens. Map rendering and semantic severity colors stay independent. */
+.portal-shell {
+  --portal-canvas: #f3f6f8;
+  --portal-surface: #fff;
+  --portal-border: #dfe7ee;
+  --portal-text: #142b40;
+  --portal-muted: #526779;
+  --portal-accent: #087f8c;
+  --portal-accent-soft: #e7f6f5;
+  --portal-radius: 16px;
+  color: var(--portal-text);
+  -webkit-font-smoothing: antialiased;
+}
+.portal-shell ::selection { background: #a7e9df; color: #10394a; }
+.portal-shell :is(button, a, input, select, textarea, summary):focus-visible { outline-color: #16a6a3; }
+.portal-sidebar {
+  background: linear-gradient(165deg, #102c40, #101e31 60%, #141e31);
+  border-color: #253b4b;
+  box-shadow: 4px 0 30px #0b24300b;
+  color: #d3e1ec;
+}
+.portal-sidebar > .portal-brand:first-child { background: transparent; border-color: #ffffff12; min-height: 82px; }
+.portal-brand img { padding: 4px; border-radius: 12px; background: #ffffffed; width: 36px; height: 36px; }
+.portal-brand-name { color: #f1f8fc; letter-spacing: -.02em; }
+.portal-brand-caption { color: #a1b7c6; margin-top: 3px; font-size: 11px; }
+.portal-nav-label { color: #8fa9ba; font-size: 9px; letter-spacing: .13em; text-transform: uppercase; }
+.portal-nav-group + .portal-nav-group { border-color: #ffffff0b; margin-top: 10px; padding-top: 8px; }
+.portal-sidebar .portal-nav-link { color: #b9cbd9; min-height: 43px; border: 1px solid transparent; border-radius: 10px; font-size: 12px; gap: 12px; margin-bottom: 3px; }
+.portal-sidebar .portal-nav-link svg { color: #89a8bb; width: 18px; }
+.portal-sidebar .portal-nav-link:hover { background: #ffffff09; color: #fff; }
+.portal-sidebar .portal-nav-link.is-active { background: linear-gradient(100deg, #0c666f, #174453); border-color: #56d2c32b; color: #d3fff6; box-shadow: 0 4px 14px #04181e25; }
+.portal-sidebar .portal-nav-link.is-active svg { color: #72e5ce; }
+.portal-sidebar .portal-nav-link.is-active::before { background: #66e3ce; top: 13px; bottom: 13px; left: -1px; }
+.portal-sidebar-search { padding-top: 18px; padding-bottom: 7px; }
+.portal-sidebar-search button { border-color: #ffffff18; background: #ffffff05; color: #afc4d3; min-height: 40px; border-radius: 10px; }
+.portal-sidebar-search button:hover { background: #ffffff0d; border-color: #7dd4cb60; }
+.portal-sidebar-search kbd { background: #ffffff08; border-color: #ffffff20; color: #adc3d2; font-size: 9px; }
+.portal-sidebar-footer { border-color: #ffffff12; background: #06162225; }
+.portal-sidebar nav { scrollbar-width: thin; scrollbar-color: #365265 transparent; }
+.portal-account { color: #afc3d2; }
+.portal-mobile-header { background: #102c40; color: #effbf9; border-color: #284759; }
+.portal-mobile-header img { background: white; padding: 3px; border-radius: 8px; }
+.portal-page-heading { background: #ffffffdc; border-bottom-color: #e2e9ee; }
+.portal-heading-inner { padding: 24px 28px; gap: 18px; }
+.portal-heading-icon { background: linear-gradient(140deg, #e7f7f3, #e6f0fb); border-color: #cfe7e5; color: #087f8c; border-radius: 15px; }
+.portal-eyebrow { color: #5c7b88; font-size: 9px; letter-spacing: .15em; }
+.portal-heading-description { color: #617586; font-size: 12px; }
+.portal-shell:not([data-map-page="true"]) .portal-main h1 { font-weight: 720; letter-spacing: -.04em; font-size: clamp(1.45rem, 2.3vw, 1.85rem); }
+.portal-shell:not([data-map-page="true"]) .portal-heading-actions :is(select, input) { border-color: #dbe5eb; border-radius: 9px; background-color: #f8fafb; font-size: 12px; min-height: 38px; }
+.portal-shell:not([data-map-page="true"]) .portal-main table { font-size: 12px; }
+.portal-shell:not([data-map-page="true"]) .portal-main th { background: #f2f7f8; color: #496373; font-size: 10px; letter-spacing: .035em; }
+.portal-shell:not([data-map-page="true"]) .portal-main tbody tr { transition: background-color 120ms ease; }
+.portal-shell:not([data-map-page="true"]) .portal-main tbody tr:hover { background: #f0f9f8; }
+.portal-shell .portal-button-primary { background: #087f8c; border-color: #087f8c; box-shadow: 0 3px 8px #087f8c1a; }
+.portal-shell .portal-button-primary:hover:not(:disabled) { background: #086975; border-color: #086975; }
+.portal-inventory-grid { gap: 14px; }
+.portal-inventory-card { position: relative; padding: 21px; border-color: #e0e8ee; border-radius: 15px; box-shadow: 0 3px 12px #12374804; overflow: hidden; transition: border-color 160ms ease, box-shadow 160ms ease; }
+.portal-inventory-card::after { content: ""; position: absolute; bottom: 0; left: 22px; width: 30px; height: 3px; background: #5191d2; border-radius: 3px 3px 0 0; }
+.portal-inventory-card:hover { border-color: #a8ccc9; box-shadow: 0 6px 20px #12374809; }
+.portal-inventory-card p { color: #607588; font-size: 11px; }
+.portal-inventory-card strong { font-size: 29px; color: #17374b; letter-spacing: -.04em; font-weight: 650; }
+.portal-inventory-icon { width: 42px; height: 42px; color: #427dbd; background: #edf4fd; border-radius: 13px; }
+.portal-inventory-card:nth-child(2) .portal-inventory-icon { background: #e7f7f2; color: #168477; }
+.portal-inventory-card:nth-child(2)::after { background: #31a993; }
+.portal-inventory-card:nth-child(3) .portal-inventory-icon { background: #f0edfd; color: #8270ba; }
+.portal-inventory-card:nth-child(3)::after { background: #9781d1; }
+.portal-inventory-card:nth-child(4) .portal-inventory-icon { background: #fdf2e5; color: #ae7b30; }
+.portal-inventory-card:nth-child(4)::after { background: #d4a05a; }
+.portal-inventory-card:nth-child(5) .portal-inventory-icon { background: #e9f5fa; color: #3484a3; }
+.network-overview { display: grid; grid-template-columns: 1.3fr 1fr; position: relative; overflow: hidden; border: 1px solid #20495a; border-radius: 20px; background: radial-gradient(ellipse at 85% 0, #14616a80, transparent 65%), linear-gradient(110deg, #112e43, #153a4c); color: #fff; box-shadow: 0 10px 28px #103b4e12; }
+.network-overview-copy { padding: 28px 32px; position: relative; z-index: 1; }
+.network-overview-eyebrow { display: inline-flex; align-items: center; gap: 8px; color: #9ad8d3; font-size: 9px; letter-spacing: .13em; font-weight: 600; }
+.network-overview h2 { margin-top: 12px; font-size: clamp(25px, 2.5vw, 36px); font-weight: 600; line-height: 1.18; letter-spacing: -.04em; }
+.network-overview h2 span { color: #91ead8; }
+.network-overview-copy > p { max-width: 390px; margin-top: 12px; font-size: 12px; line-height: 1.7; color: #b4ccd6; }
+.network-overview-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 22px; }
+.network-overview-actions a { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 12px; min-height: 40px; border: 1px solid #b2e4e333; border-radius: 9px; color: #def1f4; background: #ffffff06; font-size: 11px; font-weight: 550; transition: background 150ms ease; }
+.network-overview-actions a:first-child { background: #b0efdf; color: #12403e; border-color: #b0efdf; }
+.network-overview-actions a:hover { background: #ffffff16; }
+.network-overview-actions a:first-child:hover { background: #c8f9ed; }
+.network-overview-inventory { display: flex; align-items: end; justify-content: center; position: relative; min-width: 0; padding: 24px; }
+.network-overview-art { position: absolute; inset: -5px 0 0; width: 100%; height: calc(100% - 36px); color: #6bdac741; }
+.network-overview-scope { position: relative; width: min(100%, 330px); border: 1px solid #c0eee51e; border-radius: 12px; padding: 12px 18px; background: #0b293edb; }
+.network-overview-scope > span { color: #a5beca; font-size: 10px; }
+.network-overview-scope > div { display: flex; align-items: baseline; gap: 8px; margin-top: 3px; flex-wrap: wrap; }
+.network-overview-scope strong { font-size: 24px; font-weight: 600; letter-spacing: -.035em; }
+.network-overview-scope div > span { font-size: 11px; color: #b1c9d1; }
+.network-overview-scope i { width: 1px; height: 18px; background: #8fb7bd38; margin: 0 10px; }
+.alarms-page .alarm-page-heading { background: linear-gradient(115deg, #fff 55%, #eaf6f5); border-color: #d7e9e7; box-shadow: 0 3px 16px #12374804; }
+.alarm-page-heading > div > div > div:first-child { background: #def4ee; color: #0c8078; border: 1px solid #c4e8df; }
+.alarm-view-tabs { border-color: #dde7ec; border-radius: 12px; background: #e8eef1; padding: 5px; box-shadow: inset 0 1px 2px #12374805; }
+.alarm-view-tabs button { min-height: 40px; font-size: 12px; }
+.alarm-view-tabs button.bg-slate-900 { background: #143f50; box-shadow: 0 3px 7px #173e4b16; }
+.alarm-summary-workspace > :is(div, details), .operational-inputs-card { border-radius: 16px; }
+.alarm-summary-workspace .alarm-scope-card { padding: 24px; border-color: #dbe6eb; border-top: 3px solid #309b98; }
+.alarm-section-eyebrow { color: #497e83; font-size: 9px; font-weight: 700; letter-spacing: .13em; margin-bottom: 8px; }
+.alarm-summary-workspace h2 { letter-spacing: -.025em; font-size: 20px; }
+.alarm-summary-workspace :is(select, input:not([type="checkbox"])) { background-color: #fafcfd; border-color: #d7e3e8; min-height: 43px; font-size: 12px; }
+.alarm-summary-workspace button { border-color: #d8e4e8; transition: background 150ms ease, border-color 150ms ease; }
+.alarm-summary-workspace button:hover:not(:disabled) { border-color: #83c5bd; background-color: #edf8f5; }
+.alarm-scope-card button { background: #0c8084; border-color: #0c8084; color: white; }
+.alarm-scope-card button:hover:not(:disabled) { color: #fff; background: #096b72; }
+.operational-inputs-card { background: linear-gradient(115deg, #fff, #f4faf8); border-color: #d9e9e3; padding: 22px; }
+.operational-inputs-card > h3 { font-size: 16px; letter-spacing: -.02em; }
+.operational-inputs-card details > summary { color: #136d70; }
+.operational-inputs-card details[open] > summary { margin-bottom: 14px; }
+.alarm-stat-card { position: relative; overflow: hidden; padding: 21px; box-shadow: 0 3px 12px #12374803; }
+.alarm-stat-card::before { content: ""; display: block; position: absolute; top: 20px; right: 20px; width: 8px; height: 8px; border-radius: 3px; background: #669fd1; box-shadow: 0 0 0 5px #669fd110; }
+.alarm-stat-card > p:first-child { padding-right: 20px; font-size: 9px; letter-spacing: .05em; }
+.alarm-stat-card > p:nth-child(2) { font-size: 32px; letter-spacing: -.04em; color: #184561; }
+.alarm-stat-caption { display: block; font-size: 10px; margin-top: 6px; color: #637b8c; }
+.alarm-stat-card[data-tone="teal"] { background: linear-gradient(130deg, #fff, #effaf6); }
+.alarm-stat-card[data-tone="teal"]::before { background: #2ca384; box-shadow: 0 0 0 5px #2ca38410; }
+.alarm-stat-card[data-tone="teal"] > p:nth-child(2) { color: #16735f; }
+.alarm-stat-card[data-tone="rose"] { background: linear-gradient(130deg, #fff, #fdf5f5); }
+.alarm-stat-card[data-tone="rose"]::before { background: #cc697b; box-shadow: 0 0 0 5px #cc697b10; }
+.alarm-stat-card[data-tone="rose"] > p:nth-child(2) { color: #ae4c5c; }
+.alarm-stat-card[data-tone="amber"] { background: linear-gradient(130deg, #fff, #fdf9ef); }
+.alarm-stat-card[data-tone="amber"]::before { background: #c39237; box-shadow: 0 0 0 5px #c3923710; }
+.alarm-stat-card[data-tone="amber"] > p:nth-child(2) { color: #9e7227; }
+.portal-command-dialog { border-color: #d0e5e2; box-shadow: 0 28px 100px #092e4260; }
+.portal-command-dialog > header { background: #f0f8f6; }
+.portal-command-result[aria-selected="true"] { background: #e9f7f2; }
+.portal-command-result[aria-selected="true"] .portal-command-icon { color: #087f83; border-color: #c3e6da; background: #f8fffc; }
+/* Scope map chrome explicitly so provider tiles, markers and severity stay intact. */
+.portal-shell .map-workspace .map-toolbar { background: linear-gradient(110deg, #fff, #f0f8f7); border-bottom-color: #d8e8e4; }
+.portal-shell .map-workspace .map-toolbar-mark { color: #087f8c; background: #e6f6f1; border-color: #c9e6de; }
+.portal-shell .map-workspace .map-tool-primary { background: #087f8c; border-color: #087f8c; }
+.portal-shell .map-workspace .map-tool-primary:hover:not(:disabled) { background: #096a73; border-color: #096a73; }
+.portal-shell .map-workspace .map-panel-heading { background: linear-gradient(130deg, #153f50, #122b3e); }
+.portal-shell .map-workspace .map-analytics-header { background: linear-gradient(130deg, #153f50, #102c40); }
+.portal-shell .map-workspace .map-analytics-tabs button[aria-selected="true"] { background: #145b65; border-color: #51a8a1; color: #e0fff8; }
+@media (max-width: 1100px) {
+  .network-overview { grid-template-columns: 1.4fr 1fr; }
+  .network-overview-copy { padding: 25px; }
+  .network-overview-art { opacity: .7; }
+}
+@media (max-width: 767px) {
+  .portal-heading-inner { padding: 20px 16px; }
+  .network-overview { grid-template-columns: 1fr; border-radius: 16px; }
+  .network-overview-copy { padding: 24px; }
+  .network-overview h2 { font-size: 29px; }
+  .network-overview-inventory { padding: 0 24px 22px; justify-content: flex-start; }
+  .network-overview-art { display: none; }
+  .network-overview-scope { width: 100%; }
+  .network-overview-actions { gap: 8px; }
+  .network-overview-actions a { min-height: 44px; flex: 1 1 180px; }
+  .portal-inventory-card { padding: 17px; }
+  .portal-inventory-card strong { font-size: 26px; }
+  .portal-inventory-icon { width: 34px; height: 34px; }
+  .alarm-summary-workspace .alarm-scope-card, .operational-inputs-card { padding: 18px; }
+  .alarm-view-tabs { display: flex; }
+  .alarm-view-tabs button { flex: 1 1 150px; min-height: 44px; }
+}

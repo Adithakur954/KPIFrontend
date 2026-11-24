@@ -1,5 +1,6 @@
 import PageHeading from "@/shared/components/common/PageHeading";
 import InventoryCard from "@/features/dashboard/components/InventoryCard";
+import NetworkOverview from "@/features/dashboard/components/NetworkOverview";
 import { useEffect, useState, useRef, useCallback, useContext } from "react";
 import {
   Activity,
@@ -291,7 +292,7 @@ export default function DashboardPage() {
     setDefaultThresholdOperators((prev) => ({ ...(prev || {}), ...nextOperators }));
   }, []);
 
-  const loadDynamicPerformanceData = useCallback(async (fileId) => {
+  const loadDynamicPerformanceData = useCallback(async (fileId, settingsReady = Promise.resolve()) => {
     if (!fileId) {
       setDynamicPerformanceEntries([]);
       return;
@@ -336,6 +337,9 @@ export default function DashboardPage() {
         .filter((entry) => entry && entry.key);
 
       setDynamicPerformanceEntries(entries);
+      // Fetch in parallel, but merge rule targets after the base settings so a
+      // slower settings response cannot overwrite the dynamic rule thresholds.
+      await settingsReady;
       await loadThresholdRulesForDynamicMetrics(entries);
     } catch (error) {
       console.error("Error loading dynamic performance metrics:", error);
@@ -400,15 +404,16 @@ export default function DashboardPage() {
     const fileId = selectedDashboardFileId || undefined;
     setRefreshingData(true);
     try {
-      await handleGetDashboardData(fileId);
-      await handleGetThresholdSetting(fileId);
+      const settingsReady = handleGetThresholdSetting(fileId);
+      const requests = [handleGetDashboardData(fileId), settingsReady];
       if (selectedDashboardFileId) {
         setPerformanceData(null);
-        await loadDynamicPerformanceData(selectedDashboardFileId);
+        requests.push(loadDynamicPerformanceData(selectedDashboardFileId, settingsReady));
       } else {
         setDynamicPerformanceEntries([]);
-        await handleGetPerformanceData(undefined);
+        requests.push(handleGetPerformanceData(undefined));
       }
+      await Promise.all(requests);
     } finally {
       setRefreshingData(false);
     }
@@ -591,10 +596,10 @@ export default function DashboardPage() {
     }
 
     handleGetDashboardData(fileId);
-    handleGetThresholdSetting(fileId);
+    const settingsReady = handleGetThresholdSetting(fileId);
     if (selectedDashboardFileId) {
       setPerformanceData(null);
-      loadDynamicPerformanceData(selectedDashboardFileId);
+      loadDynamicPerformanceData(selectedDashboardFileId, settingsReady);
     } else {
       setDynamicPerformanceEntries([]);
       handleGetPerformanceData(undefined);
@@ -1033,7 +1038,7 @@ export default function DashboardPage() {
       </>} />
 
       <div className="max-w-[1800px] mx-auto px-4 py-4 space-y-8">
-
+        <NetworkOverview sites={dashboardData?.totalSites} cells={dashboardData?.totalCells} loading={loading} />
         <div className="portal-inventory-grid">
           {metricList.map((metric, index) => <InventoryCard key={metric.label} label={metric.label} value={metric.value} icon={icons[index]} loading={loading} />)}
         </div>
@@ -1179,8 +1184,11 @@ export default function DashboardPage() {
                       <div className="absolute top-3 right-3">
                         <div
                           className={`${status.badge} p-1.5 rounded-full flex items-center justify-center shadow-sm`}
+                          role="img"
+                          aria-label={status.status === "bad" ? "Outside threshold" : status.status === "good" ? "Within threshold" : "No threshold"}
+                          title={status.status === "bad" ? "Outside threshold" : status.status === "good" ? "Within threshold" : "No threshold"}
                         >
-                          {status.icon}<span className="ml-1 text-xs font-semibold">{status.status === "bad" ? "Outside threshold" : status.status === "good" ? "Within threshold" : "No threshold"}</span>
+                          {status.icon}
                         </div>
                       </div>
 

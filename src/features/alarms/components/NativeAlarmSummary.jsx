@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Download, RefreshCw, AlertTriangle, Building2 } from "lucide-react";
 import { useAuth } from "@/shared/context/AuthContext";
 import { downloadNativeAlarmReport, fetchAlarmCompanies, fetchNativeAlarmSummary } from "../services/nativeAlarmService";
+import OperationalInputsPanel from "./OperationalInputsPanel";
 
 const inputClass = "w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500";
 const buttonClass = "inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50";
@@ -94,8 +95,9 @@ export default function NativeAlarmSummary() {
   const shown = circleId ? circleRows.filter(group => String(group.circleId) === circleId) : circleRows;
   const missingFeeds = Math.max(0, Number(data?.configuredActiveFeeds || 0) - (data?.sources?.length || 0));
 
-  return <section className="space-y-5" aria-label="National and circle alarm summaries">
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+  return <section className="alarm-summary-workspace space-y-5" aria-label="National and circle alarm summaries">
+    <div className="alarm-scope-card rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <p className="alarm-section-eyebrow">SOURCE INTELLIGENCE</p>
       <h2 className="text-lg font-semibold text-slate-950">National &amp; circle summaries</h2>
       <p className="mt-1 text-sm text-slate-600">Customer-classified OSS snapshots for 2G and 4G, with source evidence and report downloads.</p>
       <div className="mt-4 grid items-end gap-4 md:grid-cols-[1fr_1fr_auto]">
@@ -114,12 +116,14 @@ export default function NativeAlarmSummary() {
     {loading && <div role="status" className="rounded-xl border border-slate-200 bg-white p-8 text-center text-slate-600">Loading source snapshots and summaries…</div>}
     {data && !summary && <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">Detailed summaries are unavailable. Please contact your administrator.</div>}
     {summary && <>
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{[["Observed records", summary.observedRecords], ["Included by customer rules", summary.includedRecords], ["Known down sites", summary.knownDownSites], ["Unmapped catalogue", summary.unmappedCatalogue]].map(([label, value]) => <div key={label} className="rounded-xl border border-slate-200 bg-white p-4"><p className="text-xs font-semibold uppercase text-slate-500">{label}</p><p className="mt-2 text-2xl font-bold text-slate-950">{count(value)}</p></div>)}</div>
+      <div className="alarm-stat-grid grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{[["Observed records", summary.observedRecords], ["Included by customer rules", summary.includedRecords], ["Known down sites", summary.knownDownSites], ["Unmapped catalogue", summary.unmappedCatalogue]].map(([label, value], index) => <div key={label} className="alarm-stat-card rounded-xl border border-slate-200 bg-white p-4" data-tone={["blue", "teal", "rose", "amber"][index]}><p className="text-xs font-semibold uppercase text-slate-500">{label}</p><p className="mt-2 text-2xl font-bold text-slate-950">{count(value)}</p><span className="alarm-stat-caption">{["Source observations", "Approved classification", "Mapped source evidence", "Needs classification"][index]}</span></div>)}</div>
+      <OperationalInputsPanel key={`${company}-${data.asOf}`} company={company} asOf={data.asOf} state={data.operationalInputs} onSaved={load} />
       {!data.sources?.length ? <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-600">No completed OSS snapshots are available at this cutoff. Source imports must complete before a report can be generated.</div> : <>
         <div className="flex flex-wrap items-end gap-3 rounded-xl border border-slate-200 bg-white p-4">
           <label className="min-w-48 flex-1 space-y-2 text-sm font-medium text-slate-700"><span>Report scope</span><select className={inputClass} value={circleId} onChange={event => setCircleId(event.target.value)}><option value="">National — all circles</option>{circles.map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select></label>
           {["xlsx", "pdf", "csv"].map(format => <button key={format} disabled={Boolean(exporting)} onClick={() => download(format)} className={buttonClass}><Download size={16} />{exporting === format ? "Preparing…" : format === "xlsx" ? "Excel report" : format.toUpperCase()}</button>)}
           {exportError && <p role="alert" className="w-full text-sm text-red-700">{exportError}</p>}
+          <p className="w-full text-xs text-slate-500">Excel and PDF include captured operational inputs. CSV contains source alarm evidence.</p>
         </div>
         {!circleId && <div className="overflow-hidden rounded-xl border border-slate-200 bg-white"><h3 className="p-4 font-semibold text-slate-900">Zone summary</h3><SummaryTable groups={summary.zones || []} /></div>}
         <div className="overflow-hidden rounded-xl border border-slate-200 bg-white"><h3 className="p-4 font-semibold text-slate-900">Circle summary</h3><SummaryTable key={circleId || "all"} groups={shown} circle /></div>
@@ -128,7 +132,7 @@ export default function NativeAlarmSummary() {
         {summary.unmappedCatalogue > 0 && <p className="mt-2">{count(summary.unmappedCatalogue)} observations have no matching customer classification rule.</p>}
         {circleRows.some(group => group.unmappedSites > 0) && <p className="mt-2">{count(circleRows.reduce((total, group) => total + Number(group.unmappedSites || 0), 0))} observations lack a site mapping. They are excluded from known-down-site counts.</p>}
         {missingFeeds > 0 && <p className="mt-2">{missingFeeds} configured source(s) have no completed snapshot at this cutoff.</p>}
-        <p className="mt-2">MS2/LR, site-up totals and operational reasons are not inferred. Missing inputs stay blank in Excel.</p>
+        <p className="mt-2">Operational figures are customer-reported and stay separate from OSS detections. Inputs that have not been supplied stay blank in Excel.</p>
         <ul className="mt-2 list-disc space-y-1 pl-5">{summary.pendingOperationalInputs.map(input => <li key={input}>{input}</li>)}</ul>
       </div>
       <details className="rounded-xl border border-slate-200 bg-white p-4"><summary className="cursor-pointer font-semibold text-slate-800">Source timestamps &amp; calculation notes</summary>
