@@ -1,4 +1,6 @@
 import MapSummaryCards from "@/features/map/components/MapSummaryCards";
+import PredictionEvidencePanel from "@/features/map/components/PredictionEvidencePanel";
+import { findPredictionSite } from "@/features/map/utils/predictionDisplay.mjs";
 import "@/styles/map-workspace.css";
 import React, { useCallback, useEffect, useState, useMemo, useRef } from "react";
 import { GoogleMap, useJsApiLoader } from "@react-google-maps/api";
@@ -288,59 +290,6 @@ function balancePredictionDisplay(items) {
   return balanced;
 }
 
-function predictionActionFromMetric(metricName) {
-  const key = normalizeKey(metricName);
-  if (/(prb|load|offload|util|resource|capacity)/i.test(key)) return "LOAD_BALANCE";
-  if (/(drop|rna|retain|availability|avail|success|fail|error|packetloss|loss)/i.test(key)) return "QUALITY_CHECK";
-  if (/(user|traffic|volume|throughput|thp|connected|data)/i.test(key)) return "CAPACITY_REVIEW";
-  if (/(rsrp|rsrq|sinr|distance|coverage|ue|signal|ta)/i.test(key)) return "COVERAGE_CHECK";
-  return "CAPACITY_REVIEW";
-}
-
-function severityFromWorstCell(row) {
-  const severity = String(row?.severity || row?.status || "").toUpperCase();
-  if (["CRITICAL", "MAJOR", "MINOR", "NORMAL", "WARNING"].includes(severity)) {
-    return severity === "WARNING" ? "MINOR" : severity;
-  }
-  const rank = Number(row?.rank || row?.position || 0);
-  if (rank > 0 && rank <= 5) return "CRITICAL";
-  if (rank > 5 && rank <= 10) return "MAJOR";
-  if (rank > 10) return "MINOR";
-  return "NORMAL";
-}
-
-function fallbackPredictionsFromWorstCells(rows, metricName) {
-  return asArray(rows).map((row, index) => {
-    const actionCode = predictionActionFromMetric(row?.metric || row?.metricName || metricName);
-    const cellName = row?.cellName || row?.cell || row?.shortName || row?.name || row?.targetCell || "";
-    const site = row?.site || row?.siteName || row?.siteId || baseCellKey(cellName);
-    const value = row?.value ?? row?.average ?? row?.avg ?? row?.score ?? row?.metricValue;
-    const severity = severityFromWorstCell(row);
-    return {
-      ...row,
-      fileId: row?.fileId,
-      site,
-      siteName: row?.siteName || site,
-      cellName,
-      targetCell: cellName,
-      actionCode,
-      severity,
-      score: value,
-      source: "worst-cell-fallback",
-      reason: `Prediction generated from worst-cell evidence for ${row?.metric || row?.metricName || metricName || "selected KPI"}.`,
-      action:
-        actionCode === "LOAD_BALANCE"
-          ? "Review load balancing, offload options, and PRB utilization near this cell."
-          : actionCode === "QUALITY_CHECK"
-            ? "Investigate service quality, drops, success rate, alarms, and availability before optimization."
-            : actionCode === "COVERAGE_CHECK"
-              ? "Check antenna, coverage, overshooting, distance, and neighbor relation conditions."
-              : "Review traffic growth, connected users, capacity expansion, and parameter tuning.",
-      rank: row?.rank || index + 1,
-    };
-  });
-}
-
 function toRecommendationList(value) {
   if (Array.isArray(value)) return value.map(String).filter(Boolean);
   const text = String(value || "").trim();
@@ -463,18 +412,13 @@ function lbRowsToMapPredictions(rows, fileId) {
     const cellName = row.Cell || row.cellName || row.Cell_Name || "";
     const site = row.Site || row.site || baseCellKey(cellName);
     const recs = [...toRecommendationList(row.ML_Recommendations), ...toRecommendationList(row.Recommendations)];
-    const probabilities = [...toRecommendationList(row.ML_Probabilities), ...toRecommendationList(row.Probabilities)]
-      .map(Number)
-      .filter(Number.isFinite);
-    const probability = Number(row.ML_Probability ?? probabilities[0] ?? 0);
     const unbalanced = String(row.Band_Unbalanced || "").toLowerCase().includes("not");
     if (!unbalanced && recs.length === 0) {
       return items;
     }
     const classified = classifyLbPrediction(row, recs, unbalanced);
-    const severity = unbalanced
-      ? probability >= 0.8 ? "CRITICAL" : probability >= 0.55 ? "MAJOR" : "MINOR"
-      : "NORMAL";
+    // Model output is not a calibrated incident severity or an outcome probability.
+    const severity = "UNASSESSED";
 
     items.push({
       ...row,
@@ -490,10 +434,10 @@ function lbRowsToMapPredictions(rows, fileId) {
         ? recs.slice(0, 3).join(", ")
         : classified.action,
       reason: classified.reason,
-      balanceStatus: row.Band_Unbalanced || (unbalanced ? "Not Balanced" : "Balanced"),
-      bandUnbalanced: row.Band_Unbalanced || (unbalanced ? "Not Balanced" : "Balanced"),
+      balanceStatus: row.Band_Unbalanced || "Not assessed",
+      bandUnbalanced: row.Band_Unbalanced || "Not assessed",
       severity,
-      score: Math.round((probability || (unbalanced ? 0.6 : 0.1)) * 100),
+      score: 0,
       source: "lb-wcf-python",
       metrics: {
         dlThroughput: row.DL_throughput,
@@ -512,7 +456,7 @@ function lbRowsToMapPredictions(rows, fileId) {
       evidence: [
         row.Band_Unbalanced ? `Balance: ${row.Band_Unbalanced}` : "",
         classified.actionCode ? `Type: ${String(classified.actionCode).replaceAll("_", " ")}` : "",
-        row.ML_Probability != null ? `ML probability ${Number(row.ML_Probability).toFixed(2)}` : "",
+        row.ML_Probability != null ? `Model score ${Number(row.ML_Probability).toFixed(2)} (not validated as probability)` : "",
         row.DL_throughput != null ? `DL throughput ${Number(row.DL_throughput).toFixed(2)}` : "",
         row["PRB DL Utilization %"] != null ? `PRB ${Number(row["PRB DL Utilization %"]).toFixed(2)}%` : "",
       ].filter(Boolean),
@@ -655,7 +599,7 @@ function percentile(values, quantile) {
 function buildSampleLbPredictions({ fileId, method, mlMode, quantile, limit = 60 }) {
   const selectedMethod = String(method || "both").toLowerCase();
   const selectedMode = Number(mlMode || 3);
-  const dlThreshold = percentile(sampleSiteMapKpiRows.map((row) => row.userdlavergthpmbps), Number(quantile || 0.1));
+  const dlThreshold = percentile(sampleSiteMapKpiRows.map((row) => row.userdlavergthpmbps), Number(quantile ?? 0.1));
   const prbHighThreshold = percentile(sampleSiteMapKpiRows.map((row) => row.prbdlutilization), 0.75);
   const trafficHighThreshold = percentile(sampleSiteMapKpiRows.map((row) => row.totaltrafficmb), 0.75);
   const userHighThreshold = percentile(sampleSiteMapKpiRows.map((row) => row.avgnumberofrrcusers), 0.75);
@@ -698,7 +642,7 @@ function buildSampleLbPredictions({ fileId, method, mlMode, quantile, limit = 60
           {
             actionCode: "COVERAGE_CHECK",
             action: "Check coverage, overshooting, antenna tilt, and neighbor mobility around this low-throughput cell.",
-            reason: `Rule-based prediction: DL throughput is below the selected ${Number(quantile || 0.1) * 100}% quantile, so this cell is Not Balanced.`,
+            reason: `Rule-based prediction: DL throughput is below the selected ${Number(quantile ?? 0.1) * 100}% quantile, so this cell is Not Balanced.`,
             score: Math.round(100 - (dl / Math.max(dlThreshold, 1)) * 20),
             source: "sample-rule-coverage",
             metricName: "User DL Averg THP Mbps",
@@ -1199,6 +1143,7 @@ export default function MapPage() {
   const [siteIntelligence, setSiteIntelligence] = useState(null);
   const [, setPredictionSummary] = useState(null);
   const [predictions, setPredictions] = useState([]);
+  const [predictionMeta, setPredictionMeta] = useState({ truncated: false, error: "" });
   const [lbTaFile, setLbTaFile] = useState(null);
   const [lbMethod, setLbMethod] = useState("both");
   const [lbMlMode, setLbMlMode] = useState("3");
@@ -1466,6 +1411,7 @@ export default function MapPage() {
       setSiteAnalyticsMessage("");
       setPredictionSummary(null);
       setPredictions([]);
+      setPredictionMeta({ truncated: false, error: "" });
       setLbResult(null);
       setLbMessage("");
       setAlarmSummary(null);
@@ -1548,6 +1494,7 @@ export default function MapPage() {
       const response = await fetchSitePredictionRecommendations({ fileId: selectedFileId, limit: 200, signal: controller.signal });
       if (controller.signal.aborted || generation !== predictionGenerationRef.current) return;
       const items = response?.success ? asArray(response.data?.data) : [];
+      setPredictionMeta({ truncated: Boolean(response?.data?.truncated), error: response?.success ? "" : (response?.message || "Recommendations could not be loaded.") });
       setPredictions(items);
       setPredictionSummary(summarizePredictions(items, selectedFileId));
     };
@@ -1579,10 +1526,11 @@ export default function MapPage() {
         fileId: selectedFileId,
         method: lbMethod,
         mlMode: lbMlMode,
-        quantile: Number(lbQuantile || 0.1),
+        quantile,
         limit: 60,
       });
-      setLbResult(buildSampleLbResult(nextPredictions, lbMethod));
+      setLbResult({ ...buildSampleLbResult(nextPredictions, lbMethod), synthetic: true });
+      setPredictionMeta({ truncated: false, error: "" });
       setLbMessage(message || "Backend has no parsed KPI rows for this sample file, so sample LB/WCF results are shown.");
       setPredictions(nextPredictions);
       setPredictionSummary(summarizePredictions(nextPredictions, selectedFileId));
@@ -1599,7 +1547,7 @@ export default function MapPage() {
         taFile: lbTaFile,
         signal: controller.signal,
         method: lbMethod,
-        quantile: Number(lbQuantile || 0.1),
+        quantile,
         mlMode: Number(lbMlMode || 3),
       });
 
@@ -1608,6 +1556,7 @@ export default function MapPage() {
         const rows = asArray(response.data?.records);
         const nextPredictions = lbRowsToMapPredictions(rows, selectedFileId);
         setLbResult(response.data);
+        setPredictionMeta({ truncated: false, error: "" });
         setLbMessage(
           nextPredictions.length > 0
             ? (response.message || "LB prediction completed on map.")
@@ -2240,15 +2189,7 @@ export default function MapPage() {
     return lookup;
   }, [worstSites]);
 
-  const displayPredictions = useMemo(() => {
-    const apiPredictions = asArray(predictions);
-    if (apiPredictions.length > 0) return apiPredictions;
-    if (!showWorstSites) return [];
-    const selectedMetricLabel = metrics
-      .map((metric) => ({ value: metricKey(metric), label: metricLabel(metric) }))
-      .find((option) => option.value === selectedMetric)?.label || DEFAULT_WORST_CELL_METRIC_LABEL;
-    return fallbackPredictionsFromWorstCells(worstCells, selectedMetricLabel);
-  }, [predictions, showWorstSites, worstCells, metrics, selectedMetric]);
+  const displayPredictions = useMemo(() => asArray(predictions), [predictions]);
 
   const kpiMetricOptions = useMemo(
     () => metrics.map((metric) => ({ value: metricKey(metric), label: metricLabel(metric) })).filter((metric) => metric.value),
@@ -2618,62 +2559,18 @@ export default function MapPage() {
   const predictionMapItems = useMemo(() => {
     if (!showPredictions || selectedPci) return [];
 
-    const isMatch = (left, right) => (
-      left === right ||
-      (left.length >= 5 && right.includes(left)) ||
-      (right.length >= 5 && left.includes(right))
-    );
-
-    const findPredictionSite = (prediction) => {
-      const keys = [
-        prediction.site,
-        prediction.siteName,
-        prediction.siteInfo?.siteId,
-        prediction.siteInfo?.siteName,
-        prediction.cellName,
-        prediction.cell,
-        prediction.targetCell,
-        baseCellKey(prediction.site),
-        baseCellKey(prediction.siteName),
-        baseCellKey(prediction.cellName),
-        baseCellKey(prediction.cell),
-        baseCellKey(prediction.targetCell),
-      ].map(normalizeKey).filter(Boolean);
-
-      return filteredSites.find((site) => {
-        const siteKeys = [
-          site.SITEID,
-          site.Site_Name,
-          baseCellKey(site.SITEID),
-          baseCellKey(site.Site_Name),
-        ].map(normalizeKey).filter(Boolean);
-        const cellKeys = asArray(site.cells).flatMap((cell) => [
-          normalizeKey(cell.Cell_Name),
-          normalizeKey(cell.Cell_ID),
-          baseCellKey(cell.Cell_Name),
-          baseCellKey(cell.Cell_ID),
-        ]).filter(Boolean);
-        return keys.some((key) =>
-          [...siteKeys, ...cellKeys].some((candidate) => isMatch(key, candidate))
-        );
-      });
-    };
-
     return asArray(displayPredictions)
       .slice()
       .sort((left, right) => predictionMapPriority(right) - predictionMapPriority(left))
       .slice(0, MAX_PREDICTION_MAP_MARKERS)
       .map((prediction, index) => {
-        const matchedSite = findPredictionSite(prediction);
-        const fallbackSite = filteredSites.length > 0 ? filteredSites[index % filteredSites.length] : null;
-        const targetSite = matchedSite || fallbackSite;
-        const lat = toNumber(prediction.siteInfo?.latitude) ?? toNumber(prediction.latitude) ?? targetSite?.lat;
-        const lon = toNumber(prediction.siteInfo?.longitude) ?? toNumber(prediction.longitude) ?? targetSite?.lon;
+        const matchedSite = findPredictionSite(prediction, filteredSites);
+        const targetSite = matchedSite;
+        const lat = toNumber(targetSite?.lat);
+        const lon = toNumber(targetSite?.lon);
         if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
-        const offsetRing = Math.floor(index / 12) + 1;
-        const offsetAngle = ((index % 12) / 12) * Math.PI * 2;
-        const markerLat = matchedSite ? lat : lat + Math.sin(offsetAngle) * 0.001 * offsetRing;
-        const markerLon = matchedSite ? lon : lon + Math.cos(offsetAngle) * 0.001 * offsetRing;
+        const markerLat = lat;
+        const markerLon = lon;
 
         const actionCode = String(prediction.actionCode || "OBSERVE").toUpperCase();
         const severity = String(prediction.severity || "NORMAL").toUpperCase();
@@ -3085,6 +2982,7 @@ export default function MapPage() {
       const selectedKpiUpload  = uploads.find((u) => String(u.id) === String(selectedFileId));
       const selectedSiteName   = selectedSiteUpload?.fileName || selectedSiteUpload?.filename || `Site file ${selectedSiteFileId || "-"}`;
       const selectedKpiName    = selectedKpiUpload?.fileName  || selectedKpiUpload?.filename  || `KPI file ${selectedFileId || "-"}`;
+      const syntheticRun = Boolean(lbResult?.synthetic) || /synthetic/i.test(selectedKpiName);
       const lbRows = asArray(lbResult?.records);
 
       // ── Colour helpers ────────────────────────────────────────────────────
@@ -3494,7 +3392,7 @@ export default function MapPage() {
       // PAGE 3 — LB/WCF Full Prediction Table
       // ═══════════════════════════════════════════════════════════════════
       doc.addPage("a4","landscape");
-      pageTitle("LB/WCF Prediction Analysis \u2014 Full Table", `${formatNumber(displayPredictions.length)} recommendations  \u00b7  ${lbResult?"Source: LB/WCF Python":"Source: Rule-based from KPI data"}`);
+      pageTitle("LB/WCF Prediction Analysis \u2014 Full Table", `${formatNumber(displayPredictions.length)} recommendations  \u00b7  ${syntheticRun ? "Source: SYNTHETIC demo" : lbResult ? "Source: LB/WCF Python" : "Source: Rule-based from KPI data"}`);
 
       // Summary cards
       const sumW=Math.floor((contentWidth-24)/5), sumH=50, sumY=68;
@@ -3786,7 +3684,7 @@ export default function MapPage() {
         ["Filter Awareness",`Active filters at export time: ${activeFilters}. All tables and counts reflect the filtered data. Disable filters before exporting for a full-network report.`],
         ["Data Quality",`${formatNumber(totalSiteRows)} raw site rows loaded. ${formatNumber(missingCoordinateRows)} rows had missing/invalid coordinates (${100-coordinateCoverage}% of raw rows) and could not be plotted.`],
         ["Sector Plot (Page 2)","Dots show all visible cells coloured by sector (A/B/C/D). Fan triangles preview azimuth bearings (capped at 400 for performance). Sector colour legend shows the actual colours used."],
-        ["LB/WCF Predictions (Pages 3-5)",lbResult?"Predictions come from the LB/WCF Python service run in this session. Rows without a recommendation or balance flag are excluded.":"LB/WCF was not run. Predictions shown are rule-based, derived from worst-cell KPI data. Run LB/WCF for full ML-based predictions."],
+        ["LB/WCF Predictions (Pages 3-5)",syntheticRun ? "SYNTHETIC DEMO: example data, not customer network findings." : lbResult?"Predictions come from the LB/WCF Python service run in this session. Rows without a recommendation or balance flag are excluded.":"LB/WCF was not run. Displayed recommendations are KPI-based screening results and are not forecasts."],
         ["TA Coverage (Page 5)","Requires the optional TA Distance File. Without it, the TA chart shows a placeholder. Near=<=2km, Mid=2-6km, Far=>6km."],
         ["Site Analysis (Page 4)","Status counts (Good/Watch/Bad/Critical) come from the site analytics service. Top-sites tables are computed from the current prediction and alarm data."],
         [`Alarm Detail (Page 7)`,alarms.length>0?`${formatNumber(alarms.length)} alarms fetched from the backend with status=OPEN for the selected KPI file.`:"No alarms loaded. Ensure a KPI file with alarm data is selected."],
@@ -5210,60 +5108,20 @@ export default function MapPage() {
       NEARBY_NEIGHBOUR: "#059669",
     };
 
-    const findPredictionSite = (prediction) => {
-      const keys = [
-        prediction.site,
-        prediction.siteName,
-        prediction.siteInfo?.siteId,
-        prediction.siteInfo?.siteName,
-        prediction.cellName,
-        prediction.cell,
-        baseCellKey(prediction.site),
-        baseCellKey(prediction.siteName),
-        baseCellKey(prediction.cellName),
-        baseCellKey(prediction.cell),
-      ].map(normalizeKey).filter(Boolean);
-
-      const isMatch = (left, right) => (
-        left === right ||
-        (left.length >= 5 && right.includes(left)) ||
-        (right.length >= 5 && left.includes(right))
-      );
-
-      return filteredSites.find((site) => {
-        const siteKeys = [
-          site.SITEID,
-          site.Site_Name,
-          baseCellKey(site.SITEID),
-          baseCellKey(site.Site_Name),
-        ].map(normalizeKey).filter(Boolean);
-        const cellKeys = asArray(site.cells).flatMap((cell) => [
-          normalizeKey(cell.Cell_Name),
-          normalizeKey(cell.Cell_ID),
-          baseCellKey(cell.Cell_Name),
-          baseCellKey(cell.Cell_ID),
-        ]).filter(Boolean);
-        return keys.some((key) =>
-          [...siteKeys, ...cellKeys].some((candidate) => isMatch(key, candidate))
-        );
-      });
-    };
-
     let plottedCount = 0;
     let approxCount = 0;
 
     asArray(displayPredictions).forEach((prediction, index) => {
-      const matchedSite = findPredictionSite(prediction);
-      const fallbackSite = filteredSites.length > 0 ? filteredSites[index % filteredSites.length] : null;
-      const site = matchedSite || fallbackSite;
-      const isApproximate = !matchedSite && Boolean(fallbackSite);
-      const lat = toNumber(prediction.siteInfo?.latitude) ?? toNumber(prediction.latitude) ?? site?.lat;
-      const lon = toNumber(prediction.siteInfo?.longitude) ?? toNumber(prediction.longitude) ?? site?.lon;
+      const matchedSite = findPredictionSite(prediction, filteredSites);
+      const site = matchedSite;
+      const isApproximate = false;
+      const lat = toNumber(site?.lat);
+      const lon = toNumber(site?.lon);
       if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
 
       const actionCode = String(prediction.actionCode || "OBSERVE").toUpperCase();
       const severity = String(prediction.severity || "NORMAL").toUpperCase();
-      const markerPosition = destinationPoint(lat, lon, 35 + (index % 8) * 45, site ? 80 : 0);
+      const markerPosition = { lat, lng: lon };
       const markerColor = actionColors[actionCode] || actionColors.OBSERVE;
       const neighbours = asArray(prediction.neighborCandidates).slice(0, 5);
       const marker = new window.google.maps.Marker({
@@ -5991,7 +5849,7 @@ export default function MapPage() {
                     </div>
                   </div>
                   <div className="mt-2 rounded-lg bg-white/80 p-2 text-[11px] leading-relaxed text-slate-600">
-                    Prediction type depends on KPI evidence: PRB/offload candidates become load balance, drops/alarms become quality, high users/traffic become capacity, and weak signal/distance becomes coverage.
+                    KPI screening suggests an area to review. Priority is rule-derived, not OSS alarm severity or a validated forecast.
                   </div>
                   <div className="mt-2 grid grid-cols-4 gap-2 text-center text-[10px] font-bold">
                     <div className="rounded-lg bg-white p-2 text-red-700">C {formatNumber(activePredictionSummary?.severityCounts?.CRITICAL)}</div>
@@ -6028,11 +5886,11 @@ export default function MapPage() {
                         </div>
                         <div className="mt-1">
                           <span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${
+                            !item.balanceStatus && !item.bandUnbalanced || String(item.balanceStatus || item.bandUnbalanced).toLowerCase() === "not assessed" ? "bg-slate-100 text-slate-600" :
                             String(item.balanceStatus || item.bandUnbalanced || "").toLowerCase().includes("not")
-                              ? "bg-red-50 text-red-700"
-                              : "bg-emerald-50 text-emerald-700"
+                              ? "bg-red-50 text-red-700" : "bg-emerald-50 text-emerald-700"
                           }`}>
-                            {item.balanceStatus || item.bandUnbalanced || "Balanced"}
+                            {item.balanceStatus || item.bandUnbalanced || "Not assessed"}
                           </span>
                         </div>
                         <div className="mt-1 truncate text-slate-500">
@@ -6799,44 +6657,19 @@ export default function MapPage() {
                     {lbResult && ` Rows: ${formatNumber(lbResult.summary?.rows)} | Unbalanced: ${formatNumber(lbResult.summary?.unbalanced_count)}`}
                   </div>
                 )}
-                <div className="max-h-[48vh] space-y-2 overflow-y-auto pr-1">
-                  {balancedDisplayPredictions.slice(0, 18).map((item, index) => (
-                    <button
-                      key={`right-prediction-${item.site}-${item.cellName}-${index}`}
-                      type="button"
-                      onClick={() => {
-                        const predictionSite = item.site || item.siteName || item.siteInfo?.siteId || item.siteInfo?.siteName;
-                        const predictionCell = item.cellName || item.cell || item.sourceCell;
-                        const mapSite = uniqueSites.find((site) =>
-                          normalizeKey(site.SITEID) === normalizeKey(predictionSite) ||
-                          normalizeKey(site.Site_Name) === normalizeKey(predictionSite) ||
-                          site.cells.some((cell) => normalizeKey(cell.Cell_Name) === normalizeKey(predictionCell))
-                        );
-                        if (mapSite) handleSiteMarkerClick(mapSite);
-                      }}
-                      className="w-full rounded-xl border border-purple-500/20 bg-slate-950 p-3 text-left transition-all hover:border-purple-500/50 hover:bg-slate-900"
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="truncate text-xs font-black text-white">{item.site || item.cellName || "Prediction"}</span>
-                        <span className={`rounded-full border px-2 py-0.5 text-[10px] font-black ${actionClasses[item.actionCode] || actionClasses.OBSERVE}`}>
-                          {String(item.actionCode || "OBSERVE").replaceAll("_", " ")}
-                        </span>
-                      </div>
-                      <div className="mt-1.5 flex items-center justify-between gap-2">
-                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${
-                          String(item.balanceStatus || item.bandUnbalanced || "").toLowerCase().includes("not")
-                            ? "border border-red-500/30 bg-red-950/60 text-red-300"
-                            : "border border-emerald-500/30 bg-emerald-950/60 text-emerald-300"
-                        }`}>
-                          {item.balanceStatus || item.bandUnbalanced || "Balanced"}
-                        </span>
-                        <span className="text-[10px] text-slate-400 font-bold">{item.severity || "NORMAL"}</span>
-                      </div>
-                      <div className="mt-1.5 truncate text-[11px] text-slate-400">{item.reason || item.action || "Review site performance."}</div>
-                    </button>
-                  ))}
-                  {asArray(displayPredictions).length === 0 && <p className="text-sm text-slate-400">No prediction recommendations found for the selected KPI file.</p>}
-                </div>
+                {predictionMeta.error && <p role="alert" className="text-xs text-red-300">{predictionMeta.error}</p>}
+                <PredictionEvidencePanel
+                  items={balancedDisplayPredictions}
+                  sites={filteredSites}
+                  fileId={selectedFileId}
+                  fileName={uploads.find(upload => String(upload.id) === String(selectedFileId))?.fileName}
+                  siteFileId={selectedSiteFileId}
+                  plotted={predictionMarkerCount}
+                  visible={showPredictions}
+                  truncated={predictionMeta.truncated}
+                  synthetic={Boolean(lbResult?.synthetic) || /synthetic/i.test(uploads.find(upload => String(upload.id) === String(selectedFileId))?.fileName || "")}
+                  onFocus={handleSiteMarkerClick}
+                />
               </div>
             )}
 

@@ -25,10 +25,11 @@ export default function LbPredictionControls({
     <div className={`${compact ? "mb-3" : "mt-3"} rounded-xl border border-purple-500/30 bg-slate-900/90 p-3 shadow-lg backdrop-blur-md`}>
       <div className="mb-3 flex items-center justify-between gap-2">
         <div>
-          <div className="text-[11px] font-black uppercase tracking-wider text-purple-300">Run LB/WCF On Map</div>
+          <div className="text-[11px] font-black uppercase tracking-wider text-purple-300">Load-balancing analysis</div>
           <div className="text-[10px] text-slate-400">
             {compact ? "TA file is optional for coverage features." : "Uses selected KPI upload; TA distance file is optional."}
           </div>
+          <div className="mt-1 text-[10px] text-slate-300">Recommendations based on the selected data; future outcomes are not validated.</div>
         </div>
         <button
           type="button"
@@ -38,11 +39,12 @@ export default function LbPredictionControls({
           title={!selectedFileId ? "Select a KPI file first" : "Run LB/WCF prediction"}
         >
           {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5 text-purple-200" />}
-          Run LB
+          {loading ? "Running" : "Run analysis"}
         </button>
       </div>
       <div className="grid grid-cols-2 gap-2">
         <select
+          aria-label="Analysis method"
           disabled={loading}
           value={method}
           onChange={(event) => onMethodChange(event.target.value)}
@@ -53,6 +55,7 @@ export default function LbPredictionControls({
           <option value="ml-based" className="bg-slate-900 text-slate-100">ML only</option>
         </select>
         <select
+          aria-label="Load-balancing metric"
           disabled={loading}
           value={mlMode}
           onChange={(event) => onMlModeChange(event.target.value)}
@@ -63,6 +66,7 @@ export default function LbPredictionControls({
           <option value="3" className="bg-slate-900 text-slate-100">Both</option>
         </select>
         <input
+          aria-label="Throughput quantile, between zero and one"
           disabled={loading}
           value={quantile}
           onChange={(event) => onQuantileChange(event.target.value)}
@@ -90,9 +94,15 @@ export default function LbPredictionControls({
           />
         </label>
       </div>
+      <p className="mt-2 text-[10px] text-slate-400">The numeric setting is the relative throughput quantile (0–1); it is not a customer-approved target.</p>
       {!taFile && (
         <div className="mt-2 rounded-lg border border-amber-500/20 bg-amber-500/10 px-2.5 py-1.5 text-[11px] font-bold text-amber-300">
           No TA file selected. Run will use KPI-only mode.
+        </div>
+      )}
+      {result?.synthetic && (
+        <div role="status" className="mt-2 rounded-lg border border-amber-400 bg-amber-100 px-3 py-2 text-xs font-bold text-amber-950">
+          SYNTHETIC DEMO DATA — not customer network findings.
         </div>
       )}
       {warnings.length > 0 && (
